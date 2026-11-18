@@ -54,20 +54,25 @@ struct OffBadge: View {
 }
 
 /// One row that says the screen shows sample data, with a button that opens the Settings tab.
+/// At the accessibility text sizes the button moves under the sentence.
 struct DemoBanner: View {
     let text: String
     let onPair: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                label
-                Spacer(minLength: 8)
-                button
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                label
-                button
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    label
+                    button
+                }
+            } else {
+                HStack(spacing: 12) {
+                    label
+                    Spacer(minLength: 8)
+                    button
+                }
             }
         }
         .accessibilityIdentifier("demoBanner")

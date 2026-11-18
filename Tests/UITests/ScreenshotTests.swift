@@ -21,9 +21,9 @@ final class ScreenshotTests: XCTestCase {
     func testQueue() throws { try capture("queue", waitFor: identifier("screen.queue")) }
     func testQueueWaiting() throws { try capture("queueWaiting", waitFor: identifier("status")) }
     func testQueueEmpty() throws { try capture("queueEmpty", waitFor: identifier("queueEmpty")) }
-    func testRuleDetail() throws { try capture("draftDetail", waitFor: identifier("draftActions")) }
+    func testRuleDetail() throws { try capture("draftDetail", waitFor: identifier("approve")) }
     func testRuleDetailEnd() throws {
-        try capture("draftDetailEnd", screen: "draftDetail", waitFor: identifier("draftActions")) { app in
+        try capture("draftDetailEnd", screen: "draftDetail", waitFor: identifier("approve")) { app in
             app.swipeUp()
             try self.expect(app, self.identifier("appearsWhileOnline"))
         }
@@ -78,7 +78,7 @@ final class ScreenshotTests: XCTestCase {
 
     func testQueueLarge() throws { try capture("queue-large", screen: "queue", waitFor: identifier("screen.queue"), large: true) }
     func testRuleDetailLarge() throws {
-        try capture("draftDetail-large", screen: "draftDetail", waitFor: identifier("draftActions"), large: true)
+        try capture("draftDetail-large", screen: "draftDetail", waitFor: identifier("approve"), large: true)
     }
     func testLibraryLarge() throws {
         try capture("library-large", screen: "library", waitFor: identifier("screen.library"), large: true)

@@ -115,6 +115,7 @@ struct DraftDetailView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(!editable)
+                .accessibilityIdentifier("approve")
                 HStack(spacing: 8) {
                     if changed(draft) {
                         Button { act(draft, .saveEdit) } label: { Text("Save Edit").frame(maxWidth: .infinity) }
@@ -135,7 +136,6 @@ struct DraftDetailView: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(.bar)
-        .accessibilityIdentifier("draftActions")
     }
 
     private func load(_ draft: Draft) {

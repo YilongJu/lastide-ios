@@ -54,6 +54,7 @@ struct LibraryView: View {
 struct RuleRow: View {
     let rule: Rule
     let status: ItemStatus
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -61,9 +62,10 @@ struct RuleRow: View {
             Text(Words.counters(rule)).font(.footnote).foregroundStyle(.secondary)
             Text(lastSeen).font(.footnote).foregroundStyle(.secondary)
             if rule.state == .off || badge != nil {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) { badges }
+                if typeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 4) { badges }
+                } else {
+                    HStack(spacing: 6) { badges }
                 }
             }
         }
