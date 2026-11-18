@@ -18,7 +18,7 @@ struct RootView: View {
         var queuePath: [String] = []
         var libraryPath: [String] = []
         switch screenshot {
-        case .none, .queue: break
+        case .none, .queue, .queueWaiting, .queueEmpty: break
         case .draftDetail:
             guard let draft = model.store.drafts.first(where: { !$0.desktopOnly }) else {
                 preconditionFailure("the demo queue holds no draft that the phone may act on")
@@ -30,7 +30,8 @@ struct RootView: View {
             guard let rule = model.store.rules.first else { preconditionFailure("the demo library holds no rule") }
             libraryPath = [rule.id]
         case .learning: tab = .learning
-        case .settings, .pairingDisclosure, .pairingCode: tab = .settings
+        case .settings, .settingsPaired, .pairingDisclosure, .pairingScan, .pairingWaiting, .pairingCode, .pairingFailed:
+            tab = .settings
         }
         _tab = State(initialValue: tab)
         _queuePath = State(initialValue: queuePath)
@@ -40,14 +41,14 @@ struct RootView: View {
     var body: some View {
         TabView(selection: $tab) {
             Tab("Review", systemImage: "tray.full", value: AppTab.review) {
-                QueueView(model: model, path: $queuePath)
+                QueueView(model: model, path: $queuePath, onPair: { tab = .settings })
             }
             .badge(model.store.badgeCount)
             Tab("Library", systemImage: "books.vertical", value: AppTab.library) {
-                LibraryView(model: model, path: $libraryPath)
+                LibraryView(model: model, path: $libraryPath, onPair: { tab = .settings })
             }
             Tab("Learning", systemImage: "chart.bar", value: AppTab.learning) {
-                LearningView(model: model)
+                LearningView(model: model, onPair: { tab = .settings })
             }
             Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
                 SettingsView(model: model)
@@ -69,6 +70,14 @@ enum Words {
         case .thisProject: return scope.projectNames.joined(separator: ", ")
         case .kindOfWork: return "Kind of work: " + (scope.kindOfWork ?? "")
         }
+    }
+
+    /// "3 corrections · 1 violation since approval".
+    static func counters(_ rule: Rule) -> String {
+        let corrections = rule.correctionsBeforeApproval == 1 ? "1 correction" : "\(rule.correctionsBeforeApproval) corrections"
+        let violations = rule.violationsSinceApproval == 1
+            ? "1 violation since approval" : "\(rule.violationsSinceApproval) violations since approval"
+        return corrections + " · " + violations
     }
 
     static func agents(_ agents: [Agent]) -> String {

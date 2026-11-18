@@ -48,7 +48,10 @@ enum AppText {
     static let unreachable = "The relay did not answer. Check the connection, then show a new code on your PC."
     static let pairingTimedOut = "The connection timed out. Show a new code on your PC."
     static let roomGone = "This PC deleted its pairing. Remove it here, then pair again."
-    static let sampleData = "Sample data. Pair a PC in Settings to review your own drafts."
+    static let sampleDrafts = "Sample drafts. Pair a PC to review your own."
+    static let sampleRules = "Sample rules. Pair a PC to see your own."
+    static let sampleNumbers = "Sample numbers. Pair a PC to see your own."
+    static let scannerUnavailable = "This device has no camera scanner. Paste the pairing code instead."
 
     /// "last seen 2 min ago", or "online now" while the PC is online.
     static func lastSeen(online: Bool, at time: Int?, now: Int) -> String {
@@ -57,13 +60,13 @@ enum AppText {
         return "last seen " + age(ms: max(0, now - time))
     }
 
-    /// "just now", "2 min ago", "3 h ago" or "4 days ago".
+    /// "just now", "2 min ago", "12 hours ago" or "4 days ago".
     static func age(ms: Int) -> String {
         let minutes = ms / 60_000
         if minutes < 1 { return "just now" }
         if minutes < 60 { return "\(minutes) min ago" }
         let hours = minutes / 60
-        if hours < 24 { return "\(hours) h ago" }
+        if hours < 24 { return hours == 1 ? "1 hour ago" : "\(hours) hours ago" }
         let days = hours / 24
         return days == 1 ? "1 day ago" : "\(days) days ago"
     }

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The Rule detail screen with edit (plan Table 14, protocol Table 23).
 /// It shows one draft with its scope, agents and evidence, and the words while the PC is online.
-/// Its buttons are Approve, Save Edit, Reject and Delete.
+/// Its buttons are Approve, Save Edit, Reject and Delete. Delete asks first.
 struct DraftDetailView: View {
     @Bindable var model: AppModel
     let draftID: String
@@ -12,6 +12,7 @@ struct DraftDetailView: View {
     @State private var scopeID = ""
     @State private var loadedVersion: Int?
     @State private var message: String?
+    @State private var confirmDelete = false
 
     var body: some View {
         Group {
@@ -48,10 +49,14 @@ struct DraftDetailView: View {
                 TextField("Rule", text: $text, axis: .vertical)
                     .lineLimit(1...10)
                     .disabled(!editable)
+                    .accessibilityIdentifier("ruleText")
                     .onChange(of: text) { _, value in
                         if value != draft.text, value.contains(where: \.isNewline) { text = Words.oneLine(value) }
                     }
-                Text(ReviewText.draftedOnPC).font(.footnote).foregroundStyle(.secondary)
+            } header: {
+                if editable { Label("Rule text", systemImage: "pencil") } else { Text("Rule text") }
+            } footer: {
+                Text(ReviewText.draftedOnPC)
             }
             Section("Scope") {
                 Picker("Applies to", selection: $scopeID) {
@@ -63,7 +68,7 @@ struct DraftDetailView: View {
                 LabeledContent("Agents", value: Words.agents(draft.agents))
                 LabeledContent("Group", value: Words.group(draft.group))
             }
-            Section {
+            Section("Evidence") {
                 ForEach(draft.evidence, id: \.id) { item in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(Words.signal(item.signal))
@@ -73,37 +78,64 @@ struct DraftDetailView: View {
                         }
                     }
                 }
-            } header: {
-                Text("Evidence")
-            } footer: {
-                Text(ReviewText.evidenceLine(draft))
             }
-            Section("Why your PC drafted it") {
-                if let evidence = currentEvidence(draft) {
+            // While the PC is offline, one placeholder stands for the rationale and the words (protocol Table 23).
+            if let evidence = currentEvidence(draft) {
+                Section("Why your PC drafted it") {
                     Text(evidence.rationale ?? "Your PC sent no reason.")
-                } else {
-                    Text(ReviewText.appearsWhileOnline).foregroundStyle(.secondary)
                 }
-            }
-            if currentEvidence(draft) == nil {
-                Section("Words") {
+            } else {
+                Section("Reasons and words") {
                     Text(ReviewText.appearsWhileOnline).foregroundStyle(.secondary)
-                }
-            }
-            Section {
-                if draft.desktopOnly {
-                    Text(ItemStatus.desktopOnly.displayText!)
-                } else {
-                    if let line = status.displayText { Text(line).foregroundStyle(.orange) }
-                    Button("Approve") { act(draft, .approve) }.disabled(!editable)
-                    Button("Save Edit") { act(draft, .saveEdit) }.disabled(!editable || !changed(draft))
-                    Button("Reject") { act(draft, .reject) }.disabled(!editable)
-                    Button("Delete", role: .destructive) { act(draft, .delete) }.disabled(!editable)
+                        .accessibilityIdentifier("appearsWhileOnline")
                 }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            actionBar(draft, status: status, editable: editable)
+        }
+        .confirmationDialog("Delete this draft?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { act(draft, .delete) }
+        }
         .onAppear { load(draft) }
         .onChange(of: draft.changedAtStoreVersion) { _, _ in load(draft) }
+    }
+
+    /// Approve, Save Edit, Reject and Delete in a bar above the tab bar, so they show on first view.
+    /// Save Edit shows once the text or the scope changed.
+    private func actionBar(_ draft: Draft, status: ItemStatus, editable: Bool) -> some View {
+        VStack(spacing: 8) {
+            if draft.desktopOnly {
+                StatusBadge(text: ItemStatus.desktopOnly.displayText!, systemImage: ItemStatus.desktopOnly.symbol)
+            } else {
+                if let line = status.displayText { StatusBadge(text: line, systemImage: status.symbol) }
+                Button { act(draft, .approve) } label: {
+                    Text("Approve").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!editable)
+                HStack(spacing: 8) {
+                    if changed(draft) {
+                        Button { act(draft, .saveEdit) } label: { Text("Save Edit").frame(maxWidth: .infinity) }
+                            .disabled(!editable)
+                    }
+                    Button { act(draft, .reject) } label: { Text("Reject").frame(maxWidth: .infinity) }
+                        .disabled(!editable)
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Text("Delete").frame(maxWidth: .infinity)
+                    }
+                    .disabled(!editable)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+        .accessibilityIdentifier("draftActions")
     }
 
     private func load(_ draft: Draft) {

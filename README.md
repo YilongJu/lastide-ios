@@ -12,7 +12,7 @@ The phone and the desktop talk through a relay, and the relay sees only encrypte
 | `App` | The SwiftUI app. `App/Core` holds the model, the relay socket, pairing and storage. `App/Platform` holds the Keychain and UIKit parts. `App/Views` holds the five screens |
 | `Packages/LastideKit` | The Swift package with the protocol, the encryption and the sync messages, and its tests |
 | `Tests/UnitTests` | The RFC 9180 and Lastide test vectors through CryptoKit |
-| `Tests/UITests` | One screenshot test per screen, in light and dark, on demo data |
+| `Tests/UITests` | Screenshot tests for every screen and state, in light and dark, on demo data or a synthetic paired PC, and six at the accessibility text size AX3 |
 | `project.yml` | The XcodeGen spec. `Config/Debug.xcconfig` reads the git-ignored `Local.xcconfig` |
 | `docs/protocol.md` | The phone protocol |
 | `scripts/ci` | The simulator picker and the ad hoc signing step of the workflows |
@@ -39,7 +39,7 @@ The package tests also run on Linux with `swift test` in `Packages/LastideKit`.
 `build.yml` runs on each push to `main`. It runs the package tests on Linux and the app tests on the newest iPhone simulator.
 It captures every screen in light and dark, and builds an unsigned `.ipa`.
 `testflight.yml` starts only by hand, and only on a commit whose `build.yml` passed.
-A screenshot run starts the app with `-LastideScreen <screen> -LastideColorScheme light` or `dark`, and shows demo data only.
+A screenshot run starts the app with `-LastideScreen <screen> -LastideColorScheme light` or `dark`, and shows demo data or a synthetic paired PC. It never reads the disk, the Keychain or the network.
 Signing keys live only in GitHub repository secrets.
 
 ## Rights

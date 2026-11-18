@@ -100,6 +100,14 @@ final class AppModel {
         pairingFlow = PairingFlow.fixed(at: step, facts: facts, sockets: sockets)
     }
 
+    /// Shows synthetic paired PCs and a synthetic store, for the screenshots. Nothing connects, and nothing is written.
+    func showForScreenshot(records: [PairingRecord], store: ReviewStore) {
+        precondition(storage == nil, "only the screenshot model shows synthetic pairings")
+        self.records = records
+        selectedID = records.first?.pairingId
+        self.store = store
+    }
+
     private func makePairingFlow() -> PairingFlow {
         PairingFlow(facts: facts, sockets: sockets, now: now,
                     consentAcceptedAt: { [weak self] in self?.preferences.disclosureAcceptedAt },
