@@ -1,0 +1,5 @@
+// Debug build settings of the app target.
+// A development build may add its test relay origin in the git-ignored file Local.xcconfig at the repository root.
+// For example: LASTIDE_RELAY_ORIGINS = $(inherited) https://<test host>
+// A Release build never reads Local.xcconfig.
+#include? "../Local.xcconfig"

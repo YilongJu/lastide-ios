@@ -1,0 +1,23 @@
+#!/bin/sh
+# Refuses a push that would publish a confidential word, a private host or a secret.
+# workspace.sh finds the private workspace that holds the word list and the scanners, and fails
+# closed when any of them is missing.
+#
+# Install with scripts/hooks/install.sh. Git runs the hook with the remote's name and URL as
+# arguments and one line per pushed ref on standard input.
+#
+# Checks:
+#   1. The workspace's push scanner checks every file of every pushed commit, the added lines of
+#      each diff, each commit message, each author and committer name and email, and each pushed
+#      annotated tag's name, message, tagger name and email.
+#   2. The workspace's tree scanner checks the files of this working tree.
+# Each check prints the file or commit and the pattern group of a match, never the matched text.
+
+set -u
+remote="${1:?pre-push: git gave no remote name}"
+hook=pre-push
+. "$(git rev-parse --show-toplevel)/scripts/hooks/workspace.sh"
+
+node "$scanners/prepush-scan.mjs" "$top" "$remote" || exit 1
+scan_tree
+exit 0

@@ -1,0 +1,322 @@
+{
+  "type": "queue",
+  "id": "tdwwPvMHVcWmOg7EEOJaZw",
+  "sentAt": 1794992460000,
+  "schema": 1,
+  "storeVersion": 42,
+  "omitted": 0,
+  "drafts": [
+    {
+      "id": "d-0005",
+      "changedAtStoreVersion": 41,
+      "draftKind": "new",
+      "text": "Use sentence case in headings.",
+      "scope": {
+        "scope": "everyProject",
+        "kindOfWork": null,
+        "projectNames": []
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "northwind-reports"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "harbor-notes"
+          ]
+        },
+        {
+          "id": "s3",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "writing",
+      "strength": "preference",
+      "agents": [
+        "claudeCode",
+        "codex"
+      ],
+      "desktopOnly": false,
+      "evidence": [
+        {
+          "id": "1",
+          "at": 1794301260000,
+          "projectName": "northwind-reports",
+          "agent": "claudeCode",
+          "signal": "typedTurn"
+        },
+        {
+          "id": "2",
+          "at": 1794474060000,
+          "projectName": "northwind-reports",
+          "agent": "claudeCode",
+          "signal": "afterInterrupt"
+        },
+        {
+          "id": "3",
+          "at": 1794560460000,
+          "projectName": "harbor-notes",
+          "agent": "codex",
+          "signal": "reviewComment"
+        }
+      ],
+      "evidenceCount": 3,
+      "sessionCount": 3,
+      "projectCount": 2,
+      "leftOutCount": 0,
+      "relatedRuleIds": [],
+      "createdAt": 1794988860000
+    },
+    {
+      "id": "d-0004",
+      "changedAtStoreVersion": 40,
+      "draftKind": "rewrite",
+      "text": "Run the whole test suite before you call a fix done.",
+      "scope": {
+        "scope": "thisProject",
+        "kindOfWork": null,
+        "projectNames": [
+          "juniper-api"
+        ]
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "juniper-api"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "kindOfWork",
+          "kindOfWork": "bug fixes",
+          "projectNames": []
+        },
+        {
+          "id": "s3",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "honesty",
+      "strength": "hardLimit",
+      "agents": [
+        "claudeCode"
+      ],
+      "desktopOnly": false,
+      "evidence": [
+        {
+          "id": "1",
+          "at": 1794214860000,
+          "projectName": "juniper-api",
+          "agent": "claudeCode",
+          "signal": "midTurnMessage"
+        },
+        {
+          "id": "2",
+          "at": 1794646860000,
+          "projectName": "juniper-api",
+          "agent": "claudeCode",
+          "signal": "typedTurn"
+        }
+      ],
+      "evidenceCount": 4,
+      "sessionCount": 3,
+      "projectCount": 1,
+      "leftOutCount": 1,
+      "relatedRuleIds": [
+        "r-0003"
+      ],
+      "createdAt": 1794974460000
+    },
+    {
+      "id": "d-0003",
+      "changedAtStoreVersion": 38,
+      "draftKind": "contradiction",
+      "text": "Keep each commit message line under 50 characters.",
+      "scope": {
+        "scope": "everyProject",
+        "kindOfWork": null,
+        "projectNames": []
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "harbor-notes"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "files",
+      "strength": "preference",
+      "agents": [
+        "codex"
+      ],
+      "desktopOnly": false,
+      "evidence": [
+        {
+          "id": "1",
+          "at": 1794733260000,
+          "projectName": "harbor-notes",
+          "agent": "codex",
+          "signal": "fileEdit"
+        },
+        {
+          "id": "2",
+          "at": 1794819660000,
+          "projectName": "harbor-notes",
+          "agent": "codex",
+          "signal": "quoteReply"
+        }
+      ],
+      "evidenceCount": 2,
+      "sessionCount": 2,
+      "projectCount": 1,
+      "leftOutCount": 0,
+      "relatedRuleIds": [
+        "r-0005"
+      ],
+      "createdAt": 1794906060000
+    },
+    {
+      "id": "d-0002",
+      "changedAtStoreVersion": 37,
+      "draftKind": "hook",
+      "text": "Block any command that deletes a folder outside the project.",
+      "scope": {
+        "scope": "everyProject",
+        "kindOfWork": null,
+        "projectNames": []
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "beforeActing",
+      "strength": "hardLimit",
+      "agents": [
+        "claudeCode",
+        "codex"
+      ],
+      "desktopOnly": true,
+      "evidence": [
+        {
+          "id": "1",
+          "at": 1793955660000,
+          "projectName": "juniper-api",
+          "agent": "codex",
+          "signal": "refusalComment"
+        },
+        {
+          "id": "2",
+          "at": 1794128460000,
+          "projectName": "northwind-reports",
+          "agent": "claudeCode",
+          "signal": "rewind"
+        }
+      ],
+      "evidenceCount": 2,
+      "sessionCount": 2,
+      "projectCount": 2,
+      "leftOutCount": 0,
+      "relatedRuleIds": [],
+      "createdAt": 1794819660000
+    },
+    {
+      "id": "d-0001",
+      "changedAtStoreVersion": 35,
+      "draftKind": "merge",
+      "text": "Name the file and the line for every claim about the code.",
+      "scope": {
+        "scope": "kindOfWork",
+        "kindOfWork": "code review",
+        "projectNames": []
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "kindOfWork",
+          "kindOfWork": "code review",
+          "projectNames": []
+        },
+        {
+          "id": "s2",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "juniper-api"
+          ]
+        },
+        {
+          "id": "s3",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "honesty",
+      "strength": "preference",
+      "agents": [
+        "claudeCode",
+        "codex"
+      ],
+      "desktopOnly": false,
+      "evidence": [
+        {
+          "id": "1",
+          "at": 1793782860000,
+          "projectName": "juniper-api",
+          "agent": "claudeCode",
+          "signal": "reviewComment"
+        },
+        {
+          "id": "2",
+          "at": 1794042060000,
+          "projectName": "harbor-notes",
+          "agent": "codex",
+          "signal": "typedTurn"
+        },
+        {
+          "id": "3",
+          "at": 1794387660000,
+          "projectName": "juniper-api",
+          "agent": "claudeCode",
+          "signal": "promptHistory"
+        }
+      ],
+      "evidenceCount": 5,
+      "sessionCount": 4,
+      "projectCount": 2,
+      "leftOutCount": 2,
+      "relatedRuleIds": [
+        "r-0007"
+      ],
+      "createdAt": 1794733260000
+    }
+  ]
+}

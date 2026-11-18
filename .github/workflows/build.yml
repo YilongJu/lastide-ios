@@ -1,0 +1,111 @@
+name: Build
+
+# Builds and tests on every push to main and on demand. This workflow reads no secret.
+# A new push never cancels a running test job, so each commit keeps its test result.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: LastideKit tests on Linux
+    runs-on: ubuntu-latest
+    container: swift:6.4
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the package tests
+        working-directory: Packages/LastideKit
+        run: swift test
+
+  ios:
+    name: App build, simulator tests, screenshots and unsigned .ipa
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the Xcode project
+        run: xcodegen generate
+      - name: Pick the newest iPhone simulator
+        run: echo "SIMULATOR_UDID=$(python3 scripts/ci/pick_simulator.py)" >> "$GITHUB_ENV"
+      # A simulator build signs to run locally and needs no team. The UI test runner must carry that signature.
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Lastide.xcodeproj \
+            -scheme Lastide \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath build/sim | xcbeautify
+      # The unit tests run the RFC 9180 and Lastide vectors through CryptoKit. The UI tests open every screen in light
+      # and dark on demo data and write one picture per screen and scheme.
+      - name: Run the unit tests and the screenshot tests
+        timeout-minutes: 10
+        env:
+          TEST_RUNNER_LASTIDE_SCREENSHOT_DIR: ${{ github.workspace }}/build/screenshots
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project Lastide.xcodeproj \
+            -scheme Lastide \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath build/sim \
+            -resultBundlePath build/Tests.xcresult | xcbeautify
+      - name: Check that every screen was captured in both schemes
+        run: |
+          set -euo pipefail
+          missing=0
+          for screen in queue draftDetail library ruleDetail learning settings pairingDisclosure pairingCode; do
+            for scheme in light dark; do
+              if [ ! -s "build/screenshots/$screen-$scheme.png" ]; then
+                echo "::error::missing screenshot $screen-$scheme.png"
+                missing=1
+              fi
+            done
+          done
+          ls -l build/screenshots
+          exit "$missing"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots
+          path: build/screenshots
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results
+          path: build/Tests.xcresult
+          if-no-files-found: error
+      - name: Build for the device with signing off
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Lastide.xcodeproj \
+            -scheme Lastide \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | xcbeautify
+      - name: Package the unsigned .ipa
+        run: |
+          set -euo pipefail
+          app=build/device/Build/Products/Release-iphoneos/Lastide.app
+          test -d "$app"
+          mkdir -p build/ipa/Payload
+          cp -R "$app" build/ipa/Payload/
+          (cd build/ipa && zip -qry ../Lastide-unsigned.ipa Payload)
+          ls -l build/Lastide-unsigned.ipa
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Lastide-unsigned-ipa
+          path: build/Lastide-unsigned.ipa
+          if-no-files-found: error

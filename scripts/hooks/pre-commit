@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuses a commit while the working tree holds a confidential word, a private host or a secret, so
+# such a word never reaches a commit. The pre-push hook checks the commits again before they leave.
+# Install with scripts/hooks/install.sh. workspace.sh fails closed when the workspace is missing.
+
+set -u
+hook=pre-commit
+. "$(git rev-parse --show-toplevel)/scripts/hooks/workspace.sh"
+
+scan_tree
+exit 0

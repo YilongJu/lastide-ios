@@ -1,0 +1,55 @@
+{
+  "type": "counts",
+  "id": "AoZVCVQuh1x_YDvDvwZPyw",
+  "sentAt": 1794992460000,
+  "schema": 1,
+  "storeVersion": 42,
+  "repeatCorrectionsThisWeek": 6,
+  "repeatCorrectionsLastWeek": 11,
+  "rulesApproved": 9,
+  "violationsThisWeek": 2,
+  "draftsToday": 3,
+  "draftCap": 20,
+  "weeks": [
+    {
+      "weekStart": "2026-09-28",
+      "repeatCorrections": 14,
+      "violations": 1
+    },
+    {
+      "weekStart": "2026-10-05",
+      "repeatCorrections": 13,
+      "violations": 2
+    },
+    {
+      "weekStart": "2026-10-12",
+      "repeatCorrections": 12,
+      "violations": 1
+    },
+    {
+      "weekStart": "2026-10-19",
+      "repeatCorrections": 12,
+      "violations": 3
+    },
+    {
+      "weekStart": "2026-10-26",
+      "repeatCorrections": 10,
+      "violations": 2
+    },
+    {
+      "weekStart": "2026-11-02",
+      "repeatCorrections": 11,
+      "violations": 1
+    },
+    {
+      "weekStart": "2026-11-09",
+      "repeatCorrections": 11,
+      "violations": 2
+    },
+    {
+      "weekStart": "2026-11-16",
+      "repeatCorrections": 6,
+      "violations": 2
+    }
+  ]
+}

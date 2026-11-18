@@ -1,0 +1,19 @@
+# Xcode projects are generated from project.yml by XcodeGen.
+*.xcodeproj
+build/
+DerivedData/
+.build/
+*.ipa
+
+# Secrets never enter this public repository. CI reads them from GitHub repository secrets.
+.env
+.env.*
+*.p8
+
+# A development build's own relay origin and other local relay test settings.
+Local.xcconfig
+*.local.xcconfig
+*.local.json
+
+# XcodeGen writes the app Info.plist from project.yml.
+App/Info.plist

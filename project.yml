@@ -1,0 +1,91 @@
+# XcodeGen spec. `xcodegen generate` writes Lastide.xcodeproj from this file on the build Mac.
+# `scripts/rename-brand/rename.mjs` in the workspace repository owns the bundle prefix `invalid.lastide`.
+name: Lastide
+options:
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+packages:
+  LastideKit:
+    path: Packages/LastideKit
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    GENERATE_INFOPLIST_FILE: "NO"
+    # The relay origins the app accepts in a QR code (protocol section 3.2): one line, origins
+    # separated by single spaces. A Debug build adds its test origin in the git-ignored Local.xcconfig.
+    LASTIDE_RELAY_ORIGINS: "https://relay.example"
+targets:
+  Lastide:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    configFiles:
+      Debug: Config/Debug.xcconfig
+    dependencies:
+      - package: LastideKit
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Lastide
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LASTIDE_RELAY_ORIGINS: $(LASTIDE_RELAY_ORIGINS)
+        NSCameraUsageDescription: Lastide uses the camera to scan the pairing code that your PC shows.
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: invalid.lastide.app
+        PRODUCT_NAME: Lastide
+        CODE_SIGN_ENTITLEMENTS: App/Lastide.entitlements
+  LastideTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/UnitTests
+      # The RFC 9180 and Lastide vectors of protocol section 10, shared with the package tests.
+      - path: Packages/LastideKit/Tests/LastideKitTests/Vectors
+        type: folder
+        buildPhase: resources
+    # A logic test bundle without a host app: the vectors need only CryptoKit and LastideKit.
+    dependencies:
+      - package: LastideKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: invalid.lastide.app.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+  LastideUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Tests/UITests
+    dependencies:
+      - target: Lastide
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: invalid.lastide.app.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: Lastide
+schemes:
+  Lastide:
+    build:
+      targets:
+        Lastide: all
+    test:
+      config: Debug
+      targets:
+        - LastideTests
+        - LastideUITests
+    run:
+      config: Debug
+    archive:
+      config: Release

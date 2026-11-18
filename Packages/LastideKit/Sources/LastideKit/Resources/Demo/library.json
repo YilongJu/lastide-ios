@@ -1,0 +1,220 @@
+{
+  "type": "library",
+  "id": "513uSidDE5LkVOsugbzdlA",
+  "sentAt": 1794992460000,
+  "schema": 1,
+  "storeVersion": 42,
+  "omitted": 0,
+  "rules": [
+    {
+      "id": "r-0009",
+      "changedAtStoreVersion": 39,
+      "text": "Ask before you add a new package to the project.",
+      "scope": {
+        "scope": "thisProject",
+        "kindOfWork": null,
+        "projectNames": [
+          "northwind-reports"
+        ]
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "northwind-reports"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "beforeActing",
+      "strength": "hardLimit",
+      "agents": [
+        "claudeCode"
+      ],
+      "source": "learned",
+      "state": "escalated",
+      "approvedAt": 1794819660000,
+      "editedAt": null,
+      "editedOn": null,
+      "correctionsBeforeApproval": 3,
+      "violationsSinceApproval": 4,
+      "violationsLast30Days": 4,
+      "lastSeenAt": 1794970860000,
+      "folderGone": false,
+      "desktopOnly": false
+    },
+    {
+      "id": "r-0007",
+      "changedAtStoreVersion": 36,
+      "text": "Write each date as year, month, day.",
+      "scope": {
+        "scope": "everyProject",
+        "kindOfWork": null,
+        "projectNames": []
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "harbor-notes"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "writing",
+      "strength": "preference",
+      "agents": [
+        "claudeCode",
+        "codex"
+      ],
+      "source": "learned",
+      "state": "on",
+      "approvedAt": 1794214860000,
+      "editedAt": 1794646860000,
+      "editedOn": "phone",
+      "correctionsBeforeApproval": 4,
+      "violationsSinceApproval": 1,
+      "violationsLast30Days": 1,
+      "lastSeenAt": 1794819660000,
+      "folderGone": false,
+      "desktopOnly": false
+    },
+    {
+      "id": "r-0005",
+      "changedAtStoreVersion": 30,
+      "text": "Wrap commit message lines at 72 characters.",
+      "scope": {
+        "scope": "everyProject",
+        "kindOfWork": null,
+        "projectNames": []
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "files",
+      "strength": "preference",
+      "agents": [
+        "codex"
+      ],
+      "source": "imported",
+      "state": "on",
+      "approvedAt": null,
+      "editedAt": null,
+      "editedOn": null,
+      "correctionsBeforeApproval": 0,
+      "violationsSinceApproval": 0,
+      "violationsLast30Days": 0,
+      "lastSeenAt": null,
+      "folderGone": false,
+      "desktopOnly": false
+    },
+    {
+      "id": "r-0003",
+      "changedAtStoreVersion": 28,
+      "text": "Run the linter before each commit.",
+      "scope": {
+        "scope": "thisProject",
+        "kindOfWork": null,
+        "projectNames": [
+          "juniper-api"
+        ]
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "juniper-api"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "beforeActing",
+      "strength": "preference",
+      "agents": [
+        "claudeCode"
+      ],
+      "source": "learned",
+      "state": "off",
+      "approvedAt": 1793264460000,
+      "editedAt": 1793696460000,
+      "editedOn": "desktop",
+      "correctionsBeforeApproval": 6,
+      "violationsSinceApproval": 2,
+      "violationsLast30Days": 0,
+      "lastSeenAt": 1793437260000,
+      "folderGone": false,
+      "desktopOnly": false
+    },
+    {
+      "id": "r-0002",
+      "changedAtStoreVersion": 20,
+      "text": "Never push to the main branch.",
+      "scope": {
+        "scope": "thisProject",
+        "kindOfWork": null,
+        "projectNames": [
+          "old-prototype"
+        ]
+      },
+      "scopeOptions": [
+        {
+          "id": "s1",
+          "scope": "thisProject",
+          "kindOfWork": null,
+          "projectNames": [
+            "old-prototype"
+          ]
+        },
+        {
+          "id": "s2",
+          "scope": "everyProject",
+          "kindOfWork": null,
+          "projectNames": []
+        }
+      ],
+      "group": "beforeActing",
+      "strength": "hardLimit",
+      "agents": [
+        "claudeCode",
+        "codex"
+      ],
+      "source": "builtIn",
+      "state": "on",
+      "approvedAt": 1791536460000,
+      "editedAt": null,
+      "editedOn": null,
+      "correctionsBeforeApproval": 0,
+      "violationsSinceApproval": 0,
+      "violationsLast30Days": 0,
+      "lastSeenAt": null,
+      "folderGone": true,
+      "desktopOnly": true
+    }
+  ]
+}
