@@ -25,7 +25,7 @@ jobs:
   ios:
     name: App build, simulator tests, screenshots and unsigned .ipa
     runs-on: xcode-27
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - name: Show Xcode version
@@ -45,10 +45,14 @@ jobs:
             -scheme Lastide \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
             -derivedDataPath build/sim | xcbeautify
+      # The first boot of a new simulator takes several minutes on the hosted Mac, so it runs in its own step.
+      - name: Boot the simulator
+        timeout-minutes: 15
+        run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
       # The unit tests run the RFC 9180 and Lastide vectors through CryptoKit. The UI tests open every screen in light
-      # and dark on demo data and write one picture per screen and scheme.
+      # and dark on demo data and write one picture per screen and scheme. Each of the 16 launches takes about 15 s.
       - name: Run the unit tests and the screenshot tests
-        timeout-minutes: 10
+        timeout-minutes: 20
         env:
           TEST_RUNNER_LASTIDE_SCREENSHOT_DIR: ${{ github.workspace }}/build/screenshots
         run: |
