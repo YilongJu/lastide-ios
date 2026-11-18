@@ -21,9 +21,9 @@ final class ScreenshotTests: XCTestCase {
     func testQueue() throws { try capture("queue", waitFor: identifier("screen.queue")) }
     func testQueueWaiting() throws { try capture("queueWaiting", waitFor: identifier("status")) }
     func testQueueEmpty() throws { try capture("queueEmpty", waitFor: identifier("queueEmpty")) }
-    func testRuleDetail() throws { try capture("draftDetail", waitFor: identifier("approve")) }
+    func testRuleDetail() throws { try capture("draftDetail", waitFor: approveButton) }
     func testRuleDetailEnd() throws {
-        try capture("draftDetailEnd", screen: "draftDetail", waitFor: identifier("approve")) { app in
+        try capture("draftDetailEnd", screen: "draftDetail", waitFor: approveButton) { app in
             app.swipeUp()
             try self.expect(app, self.identifier("appearsWhileOnline"))
         }
@@ -78,7 +78,7 @@ final class ScreenshotTests: XCTestCase {
 
     func testQueueLarge() throws { try capture("queue-large", screen: "queue", waitFor: identifier("screen.queue"), large: true) }
     func testRuleDetailLarge() throws {
-        try capture("draftDetail-large", screen: "draftDetail", waitFor: identifier("approve"), large: true)
+        try capture("draftDetail-large", screen: "draftDetail", waitFor: approveButton, large: true)
     }
     func testLibraryLarge() throws {
         try capture("library-large", screen: "library", waitFor: identifier("screen.library"), large: true)
@@ -96,6 +96,11 @@ final class ScreenshotTests: XCTestCase {
     // MARK: Helpers
 
     private func identifier(_ id: String) -> NSPredicate { NSPredicate(format: "identifier == %@", id) }
+
+    /// The Approve button of the draft's action bar. The bar sits inside the screen's identifier, so it is found by label.
+    private var approveButton: NSPredicate {
+        NSPredicate(format: "elementType == %d AND label == %@", XCUIElement.ElementType.button.rawValue, "Approve")
+    }
 
     private func expect(_ app: XCUIApplication, _ predicate: NSPredicate) throws {
         let element = app.descendants(matching: .any).matching(predicate).firstMatch
