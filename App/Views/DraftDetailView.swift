@@ -106,7 +106,7 @@ struct DraftDetailView: View {
     private func actionBar(_ draft: Draft, status: ItemStatus, editable: Bool) -> some View {
         VStack(spacing: 8) {
             if draft.desktopOnly {
-                StatusBadge(text: ItemStatus.desktopOnly.displayText!, systemImage: ItemStatus.desktopOnly.symbol)
+                StatusBadge(text: ItemStatus.desktopOnly(.draft).displayText!, systemImage: ItemStatus.desktopOnly(.draft).symbol)
             } else {
                 if let line = status.displayText { StatusBadge(text: line, systemImage: status.symbol) }
                 Button { act(draft, .approve) } label: {

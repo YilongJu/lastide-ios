@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           missing=0
           screens="queue queueWaiting queueEmpty draftDetail draftDetailEnd draftDetailEdited"
-          screens="$screens library ruleDetail ruleDetailEdited learning learningEnd"
+          screens="$screens library libraryNotMeasured ruleDetail ruleDetailEdited learning learningNotMeasured learningEnd"
           screens="$screens settings settingsPaired diagnostics pairingDisclosure pairingScan pairingWaiting pairingCode pairingFailed"
           screens="$screens queue-large draftDetail-large library-large ruleDetail-large learning-large settings-large"
           for screen in $screens; do

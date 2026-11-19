@@ -160,8 +160,10 @@ public struct Rule: Hashable, Sendable, Codable, Validatable, Identifiable {
     public var editedAt: Int?
     public var editedOn: EditedOn?
     public var correctionsBeforeApproval: Int
-    public var violationsSinceApproval: Int
-    public var violationsLast30Days: Int
+    /// Null while the PC does not measure violations yet (protocol 7.3). The app shows "Not measured yet".
+    public var violationsSinceApproval: Int?
+    /// Null while the PC does not measure violations yet (protocol 7.3).
+    public var violationsLast30Days: Int?
     public var lastSeenAt: Int?
     public var folderGone: Bool
     public var desktopOnly: Bool
@@ -176,7 +178,7 @@ public struct Rule: Hashable, Sendable, Codable, Validatable, Identifiable {
     init(id: String, changedAtStoreVersion: Int, text: String, scope: Scope, scopeOptions: [ScopeOption],
                 group: RuleGroup, strength: Strength, agents: [Agent], source: RuleSource, state: RuleState,
                 approvedAt: Int?, editedAt: Int?, editedOn: EditedOn?, correctionsBeforeApproval: Int,
-                violationsSinceApproval: Int, violationsLast30Days: Int, lastSeenAt: Int?, folderGone: Bool,
+                violationsSinceApproval: Int?, violationsLast30Days: Int?, lastSeenAt: Int?, folderGone: Bool,
                 desktopOnly: Bool) {
         self.id = id
         self.changedAtStoreVersion = changedAtStoreVersion
@@ -215,8 +217,8 @@ public struct Rule: Hashable, Sendable, Codable, Validatable, Identifiable {
         editedAt = try c.nullable(Int.self, forKey: .editedAt)
         editedOn = try c.nullable(EditedOn.self, forKey: .editedOn)
         correctionsBeforeApproval = try c.decode(Int.self, forKey: .correctionsBeforeApproval)
-        violationsSinceApproval = try c.decode(Int.self, forKey: .violationsSinceApproval)
-        violationsLast30Days = try c.decode(Int.self, forKey: .violationsLast30Days)
+        violationsSinceApproval = try c.nullable(Int.self, forKey: .violationsSinceApproval)
+        violationsLast30Days = try c.nullable(Int.self, forKey: .violationsLast30Days)
         lastSeenAt = try c.nullable(Int.self, forKey: .lastSeenAt)
         folderGone = try c.decode(Bool.self, forKey: .folderGone)
         desktopOnly = try c.decode(Bool.self, forKey: .desktopOnly)
@@ -238,8 +240,8 @@ public struct Rule: Hashable, Sendable, Codable, Validatable, Identifiable {
         try c.encodeNullable(editedAt, forKey: .editedAt)
         try c.encodeNullable(editedOn, forKey: .editedOn)
         try c.encode(correctionsBeforeApproval, forKey: .correctionsBeforeApproval)
-        try c.encode(violationsSinceApproval, forKey: .violationsSinceApproval)
-        try c.encode(violationsLast30Days, forKey: .violationsLast30Days)
+        try c.encodeNullable(violationsSinceApproval, forKey: .violationsSinceApproval)
+        try c.encodeNullable(violationsLast30Days, forKey: .violationsLast30Days)
         try c.encodeNullable(lastSeenAt, forKey: .lastSeenAt)
         try c.encode(folderGone, forKey: .folderGone)
         try c.encode(desktopOnly, forKey: .desktopOnly)
@@ -255,8 +257,8 @@ public struct Rule: Hashable, Sendable, Codable, Validatable, Identifiable {
         try Check.optionalInteger(approvedAt, path + ".approvedAt")
         try Check.optionalInteger(editedAt, path + ".editedAt")
         try Check.integer(correctionsBeforeApproval, path + ".correctionsBeforeApproval")
-        try Check.integer(violationsSinceApproval, path + ".violationsSinceApproval")
-        try Check.integer(violationsLast30Days, path + ".violationsLast30Days")
+        try Check.optionalInteger(violationsSinceApproval, path + ".violationsSinceApproval")
+        try Check.optionalInteger(violationsLast30Days, path + ".violationsLast30Days")
         try Check.optionalInteger(lastSeenAt, path + ".lastSeenAt")
     }
 }

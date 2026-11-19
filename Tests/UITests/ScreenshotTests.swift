@@ -38,6 +38,14 @@ final class ScreenshotTests: XCTestCase {
     // MARK: Library
 
     func testLibrary() throws { try capture("library", waitFor: identifier("screen.library")) }
+    /// The paired PC's Library, scrolled to its last rule, a project rule that reads "Change this one on your PC".
+    func testLibraryNotMeasured() throws {
+        try capture("libraryNotMeasured", waitFor: identifier("screen.library")) { app in
+            app.swipeUp()
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Change this one on your PC"))
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Violations: Not measured yet"))
+        }
+    }
     func testLibraryRule() throws { try capture("ruleDetail", waitFor: identifier("screen.ruleDetail")) }
     func testLibraryRuleEdited() throws {
         try capture("ruleDetailEdited", screen: "ruleDetail", waitFor: identifier("ruleText")) { app in
@@ -49,6 +57,11 @@ final class ScreenshotTests: XCTestCase {
     // MARK: Learning
 
     func testLearning() throws { try capture("learning", waitFor: identifier("screen.learning")) }
+    func testLearningNotMeasured() throws {
+        try capture("learningNotMeasured", waitFor: identifier("screen.learning")) { app in
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Not measured yet"))
+        }
+    }
     func testLearningEnd() throws {
         try capture("learningEnd", screen: "learning", waitFor: identifier("screen.learning")) { app in
             app.swipeUp()

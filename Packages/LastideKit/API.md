@@ -408,7 +408,7 @@ Each message type is `Hashable` and `Codable`, and holds `id: String` and `sentA
 | `PairRefuse` | `pairingId`, `phoneId`, `reason: PairRefuseReason` |
 | `QueueSnapshot` | `schema`, `storeVersion`, `omitted`, `drafts: [Draft]` |
 | `LibrarySnapshot` | `schema`, `storeVersion`, `omitted`, `rules: [Rule]` |
-| `Counts` | `schema`, `storeVersion`, `repeatCorrectionsThisWeek`, `repeatCorrectionsLastWeek`, `rulesApproved`, `violationsThisWeek`, `draftsToday`, `draftCap`, `weeks: [WeekCount]` |
+| `Counts` | `schema`, `storeVersion`, `repeatCorrectionsThisWeek: Int?`, `repeatCorrectionsLastWeek: Int?`, `rulesApproved`, `violationsThisWeek: Int?`, `draftsToday`, `draftCap: Int?`, `weeks: [WeekCount]`. Each `Int?` is null while the PC does not measure that count yet; show `ReviewText.notMeasured` |
 | `Evidence` | `requestId`, `draftId`, `changedAtStoreVersion`, `rationale: String?`, `items: [EvidenceWords]` |
 | `Acknowledgement` | `decisionId`, `result: AcknowledgementResult`, `appliedAt: Int?`, `reason: RefusalReason?`, `storeVersion`, `current: CurrentItem?` |
 | `Decision` | `decisionId`, `target: Target`, `storeVersion`, `action: DecisionAction`, `text: String?`, `scopeOptionId: String?`, `decidedAt` |
@@ -428,7 +428,7 @@ Unpair.init(id: String, sentAt: Int)
 | Type | One line | Fields |
 | --- | --- | --- |
 | `Draft: Identifiable` | A rule text that waits in the review queue | `id`, `changedAtStoreVersion`, `draftKind`, `text`, `scope`, `scopeOptions`, `group: RuleGroup`, `strength`, `agents`, `desktopOnly`, `evidence: [EvidenceItem]`, `evidenceCount`, `sessionCount`, `projectCount`, `leftOutCount`, `relatedRuleIds`, `createdAt` |
-| `Rule: Identifiable` | A rule the person approved | `id`, `changedAtStoreVersion`, `text`, `scope`, `scopeOptions`, `group`, `strength`, `agents`, `source`, `state`, `approvedAt: Int?`, `editedAt: Int?`, `editedOn: EditedOn?`, `correctionsBeforeApproval`, `violationsSinceApproval`, `violationsLast30Days`, `lastSeenAt: Int?`, `folderGone`, `desktopOnly` |
+| `Rule: Identifiable` | A rule the person approved | `id`, `changedAtStoreVersion`, `text`, `scope`, `scopeOptions`, `group`, `strength`, `agents`, `source`, `state`, `approvedAt: Int?`, `editedAt: Int?`, `editedOn: EditedOn?`, `correctionsBeforeApproval`, `violationsSinceApproval: Int?`, `violationsLast30Days: Int?`, `lastSeenAt: Int?`, `folderGone`, `desktopOnly`. The two violation counters are null while the PC does not measure them yet |
 | `Scope` | Where an item applies | `kind: ScopeKind` (JSON `scope`), `kindOfWork: String?`, `projectNames: [String]` |
 | `ScopeOption` | One scope the person may pick | `id`, `scope: Scope` |
 | `EvidenceItem` | One correction behind a draft, without words | `id`, `at`, `projectName`, `agent`, `signal` |
@@ -462,7 +462,7 @@ Each is a `String` raw value enum, `Codable` and `CaseIterable`.
 | `TargetType` | `draft`, `rule` |
 | `ErrorCode` | `badMessage`, `unknownType` |
 | `AcknowledgementResult` | `applied`, `refused` |
-| `RefusalReason` | `expired`, `gone`, `desktopOnly`, `staleVersion`, `invalidAction`, `invalidText`, `invalidScope`; `var displayText: String` (Table 22) |
+| `RefusalReason` | `expired`, `gone`, `desktopOnly`, `staleVersion`, `invalidAction`, `invalidText`, `invalidScope`; `func displayText(for: TargetType) -> String` (Table 22). Only `desktopOnly` differs: "Approve this one on your PC" for a draft, "Change this one on your PC" for a rule |
 | `PairRefuseReason` | `wrongCode`, `expired`, `twoPhones`, `cancelled`, `tooManyPhones`; `var displayText: String` (Table 7) |
 
 ## Queue and library state
@@ -500,7 +500,7 @@ mutating func apply(relayFrame frame: RelayFrame)
 ```
 
 - `apply(_:)` replaces a snapshot when its store version is equal or higher, and returns an outcome only for `acknowledgement`.
-- `decide` throws `ReviewError` for a decision that Table 21 does not allow. A live store adds the decision to the outbox. A demo store applies it to its own copy and leaves the outbox empty.
+- `decide` throws `ReviewError` for a decision that Table 21 does not allow. It throws `invalidText` for a text that `TextRule` refuses, and sends an accepted text in NFC. A live store adds the decision to the outbox. A demo store applies it to its own copy and leaves the outbox empty.
 - After each `welcome`, send `decisionsToSend(now:)`. Seal each one with `PCSession.seal(.decision(d), now:)` and call `markSent` with the envelope's `seq`.
 - Pass every `stored` and `dropped` frame to `apply(relayFrame:)`.
 
@@ -536,8 +536,9 @@ A filter chip: `all`, `new`, `rewrite`, `conflict`. `var label: String` gives "A
 What a card shows about its item's actions.
 
 ```swift
-case ready, desktopOnly, notSent, waitingForPC, refused(RefusalReason)
-var displayText: String?      // "Not sent yet", "Waiting for your PC", "Approve this one on your PC", or the refusal's sentence
+case ready, desktopOnly(TargetType), notSent, waitingForPC, refused(RefusalReason, TargetType)
+var displayText: String?      // "Not sent yet", "Waiting for your PC", "Approve this one on your PC" for a draft,
+                              // "Change this one on your PC" for a rule, or the refusal's sentence
 var allowsActions: Bool
 ```
 
@@ -547,7 +548,21 @@ What an acknowledgement changed: `applied(Target)`, `refused(Target, RefusalReas
 
 ### `enum ReviewError: Error`
 
-Why the phone refused to build a decision: `unknownItem`, `desktopOnly`, `decisionPending`, `actionDoesNotFit`, `importedRule`, `invalidText`, `invalidScope`.
+Why the phone refused to build a decision: `unknownItem`, `desktopOnly(TargetType)`, `decisionPending`, `actionDoesNotFit`, `importedRule`, `invalidText`, `invalidScope`.
+
+### `enum TextRule`
+
+The text rule of protocol section 7.4, check 7. The phone runs it before it builds a decision with text. The PC's answer still decides, because the two devices may know different Unicode versions.
+
+```swift
+static func problem(in text: String) -> Problem?   // nil when the PC accepts the text
+enum Problem { case empty, tooLong, hiddenCodePoint(Unicode.Scalar), fileImport }
+```
+
+- `empty`: nothing but space separators (general category Zs).
+- `tooLong`: more than 500 code points after NFC normalization.
+- `hiddenCodePoint`: a code point of category Cc, Cf, Co, Cn, Zl or Zp, such as a line break.
+- `fileImport`: an `@` that starts a word. It is the first code point or follows a space separator, and a non-space code point follows it.
 
 ### `enum ReviewText`
 
@@ -556,6 +571,7 @@ Fixed sentences of the review screens.
 ```swift
 static let draftedOnPC: String                 // "Drafted on your PC"
 static let appearsWhileOnline: String          // "Appears while your PC is online"
+static let notMeasured: String                 // "Not measured yet", for a count the PC sends as null
 static func moreOnPC(_ omitted: Int) -> String // "3 more on your PC"
 static func evidenceLine(_ draft: Draft) -> String   // "3 corrections, 2 projects"
 ```

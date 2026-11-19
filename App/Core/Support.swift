@@ -75,11 +75,11 @@ enum AppText {
     static func reviewError(_ error: ReviewError) -> String {
         switch error {
         case .unknownItem: return "This item is no longer on the list."
-        case .desktopOnly: return ItemStatus.desktopOnly.displayText!
+        case .desktopOnly(let type): return ItemStatus.desktopOnly(type).displayText!
         case .decisionPending: return ItemStatus.notSent.displayText!
         case .actionDoesNotFit: return "This action does not fit this item."
         case .importedRule: return "Edit imported rules on your PC."
-        case .invalidText: return "Use one line of 1 to 500 characters."
+        case .invalidText: return "Use one line of 1 to 500 characters, without hidden characters or an @ that starts a word."
         case .invalidScope: return "Pick a scope from the list."
         }
     }

@@ -101,17 +101,22 @@ final class ReviewStoreTests: XCTestCase {
             case .staleVersion:
                 XCTAssertEqual(store.draft(id: "d-0001")?.text, "Use sentence case in all headings.")
                 XCTAssertEqual(store.seenAt(draft1), 43)
-                XCTAssertEqual(store.status(of: draft1), .refused(.staleVersion))
+                XCTAssertEqual(store.status(of: draft1), .refused(.staleVersion, .draft))
                 XCTAssertEqual(store.status(of: draft1).displayText, "Your PC changed this one. Review the new version.")
                 let again = try store.decide(draft1, action: .approve, text: nil, scopeOptionId: nil, now: sampleTime)
                 XCTAssertEqual(again.storeVersion, 43, "the next decision uses the version of the current item")
                 XCTAssertEqual(store.status(of: draft1), .notSent)
             default:
-                XCTAssertEqual(store.status(of: draft1), .refused(reason))
-                XCTAssertEqual(store.status(of: draft1).displayText, reason.displayText)
+                XCTAssertEqual(store.status(of: draft1), .refused(reason, .draft))
+                XCTAssertEqual(store.status(of: draft1).displayText, reason.displayText(for: .draft))
             }
         }
-        XCTAssertEqual(RefusalReason.expired.displayText, "This change waited too long. Make it again.")
+        XCTAssertEqual(RefusalReason.expired.displayText(for: .draft), "This change waited too long. Make it again.")
+        XCTAssertEqual(RefusalReason.desktopOnly.displayText(for: .draft), "Approve this one on your PC")
+        XCTAssertEqual(RefusalReason.desktopOnly.displayText(for: .rule), "Change this one on your PC")
+        for reason in RefusalReason.allCases where reason != .desktopOnly {
+            XCTAssertEqual(reason.displayText(for: .draft), reason.displayText(for: .rule), "only desktopOnly differs")
+        }
     }
 
     func testPhoneRefusesDecisionsThatTable21DoesNotAllow() throws {
@@ -124,9 +129,9 @@ final class ReviewStoreTests: XCTestCase {
                                  line: line) { XCTAssertEqual($0 as? ReviewError, expected, line: line) }
         }
         let hook = Target(targetType: .draft, id: "d-hook")
-        XCTAssertEqual(store.status(of: hook), .desktopOnly)
+        XCTAssertEqual(store.status(of: hook), .desktopOnly(.draft))
         XCTAssertEqual(store.status(of: hook).displayText, "Approve this one on your PC")
-        refused(hook, .approve, nil, nil, .desktopOnly)
+        refused(hook, .approve, nil, nil, .desktopOnly(.draft))
         refused(Target(targetType: .draft, id: "d-none"), .approve, nil, nil, .unknownItem)
         refused(Target(targetType: .rule, id: "d-0001"), .turnOff, nil, nil, .unknownItem)
         refused(draft1, .turnOff, nil, nil, .actionDoesNotFit)

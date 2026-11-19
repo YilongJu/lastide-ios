@@ -102,7 +102,7 @@ struct DraftCard: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if draft.desktopOnly {
-                StatusBadge(text: ItemStatus.desktopOnly.displayText!, systemImage: ItemStatus.desktopOnly.symbol)
+                StatusBadge(text: ItemStatus.desktopOnly(.draft).displayText!, systemImage: ItemStatus.desktopOnly(.draft).symbol)
             } else if let text = status.displayText {
                 StatusBadge(text: text, systemImage: status.symbol)
             }

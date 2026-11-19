@@ -24,12 +24,12 @@ struct RootView: View {
                 preconditionFailure("the demo queue holds no draft that the phone may act on")
             }
             queuePath = [draft.id]
-        case .library: tab = .library
+        case .library, .libraryNotMeasured: tab = .library
         case .ruleDetail:
             tab = .library
             guard let rule = model.store.rules.first else { preconditionFailure("the demo library holds no rule") }
             libraryPath = [rule.id]
-        case .learning: tab = .learning
+        case .learning, .learningNotMeasured: tab = .learning
         case .settings, .settingsPaired, .pairingDisclosure, .pairingScan, .pairingWaiting, .pairingCode, .pairingFailed:
             tab = .settings
         }
@@ -72,13 +72,21 @@ enum Words {
         }
     }
 
-    /// "3 corrections · 1 violation since approval".
+    /// "3 corrections · 1 violation since approval", or "3 corrections · Violations: Not measured yet" while the PC sends
+    /// the count as null (protocol 7.3).
     static func counters(_ rule: Rule) -> String {
         let corrections = rule.correctionsBeforeApproval == 1 ? "1 correction" : "\(rule.correctionsBeforeApproval) corrections"
-        let violations = rule.violationsSinceApproval == 1
-            ? "1 violation since approval" : "\(rule.violationsSinceApproval) violations since approval"
+        let violations: String
+        switch rule.violationsSinceApproval {
+        case nil: violations = "Violations: " + ReviewText.notMeasured
+        case 1?: violations = "1 violation since approval"
+        case let count?: violations = "\(count) violations since approval"
+        }
         return corrections + " · " + violations
     }
+
+    /// A count as a number, or "Not measured yet" when the PC sends it as null (protocol 7.3).
+    static func count(_ value: Int?) -> String { value.map { "\($0)" } ?? ReviewText.notMeasured }
 
     static func agents(_ agents: [Agent]) -> String {
         agents.map { $0 == .claudeCode ? "Claude Code" : "Codex" }.joined(separator: ", ")

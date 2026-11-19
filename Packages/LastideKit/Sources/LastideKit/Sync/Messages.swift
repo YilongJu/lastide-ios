@@ -131,21 +131,63 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
     public var sentAt: Int
     public var schema: Int
     public var storeVersion: Int
-    public var repeatCorrectionsThisWeek: Int
-    public var repeatCorrectionsLastWeek: Int
+    /// Null while the PC does not measure repeat corrections yet (protocol 7.3).
+    public var repeatCorrectionsThisWeek: Int?
+    /// Null while the PC does not measure repeat corrections yet.
+    public var repeatCorrectionsLastWeek: Int?
     public var rulesApproved: Int
-    public var violationsThisWeek: Int
+    /// Null while the PC does not measure violations yet.
+    public var violationsThisWeek: Int?
     public var draftsToday: Int
-    public var draftCap: Int
+    /// Null while the PC does not cap its drafts per day yet.
+    public var draftCap: Int?
     /// Oldest week first.
     public var weeks: [WeekCount]
 
+    enum CodingKeys: String, CodingKey {
+        case id, sentAt, schema, storeVersion, repeatCorrectionsThisWeek, repeatCorrectionsLastWeek, rulesApproved
+        case violationsThisWeek, draftsToday, draftCap, weeks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        sentAt = try c.decode(Int.self, forKey: .sentAt)
+        schema = try c.decode(Int.self, forKey: .schema)
+        storeVersion = try c.decode(Int.self, forKey: .storeVersion)
+        repeatCorrectionsThisWeek = try c.nullable(Int.self, forKey: .repeatCorrectionsThisWeek)
+        repeatCorrectionsLastWeek = try c.nullable(Int.self, forKey: .repeatCorrectionsLastWeek)
+        rulesApproved = try c.decode(Int.self, forKey: .rulesApproved)
+        violationsThisWeek = try c.nullable(Int.self, forKey: .violationsThisWeek)
+        draftsToday = try c.decode(Int.self, forKey: .draftsToday)
+        draftCap = try c.nullable(Int.self, forKey: .draftCap)
+        weeks = try c.decode([WeekCount].self, forKey: .weeks)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(sentAt, forKey: .sentAt)
+        try c.encode(schema, forKey: .schema)
+        try c.encode(storeVersion, forKey: .storeVersion)
+        try c.encodeNullable(repeatCorrectionsThisWeek, forKey: .repeatCorrectionsThisWeek)
+        try c.encodeNullable(repeatCorrectionsLastWeek, forKey: .repeatCorrectionsLastWeek)
+        try c.encode(rulesApproved, forKey: .rulesApproved)
+        try c.encodeNullable(violationsThisWeek, forKey: .violationsThisWeek)
+        try c.encode(draftsToday, forKey: .draftsToday)
+        try c.encodeNullable(draftCap, forKey: .draftCap)
+        try c.encode(weeks, forKey: .weeks)
+    }
+
     func validate(_ path: String) throws {
         try Check.schemaRevision(schema, path + ".schema")
-        for (value, name) in [(storeVersion, "storeVersion"), (repeatCorrectionsThisWeek, "repeatCorrectionsThisWeek"),
-                              (repeatCorrectionsLastWeek, "repeatCorrectionsLastWeek"), (rulesApproved, "rulesApproved"),
-                              (violationsThisWeek, "violationsThisWeek"), (draftsToday, "draftsToday"), (draftCap, "draftCap")] {
+        for (value, name) in [(storeVersion, "storeVersion"), (rulesApproved, "rulesApproved"), (draftsToday, "draftsToday")] {
             try Check.integer(value, path + "." + name)
+        }
+        for (value, name) in [(repeatCorrectionsThisWeek, "repeatCorrectionsThisWeek"),
+                              (repeatCorrectionsLastWeek, "repeatCorrectionsLastWeek"),
+                              (violationsThisWeek, "violationsThisWeek"), (draftCap, "draftCap")] {
+            try Check.optionalInteger(value, path + "." + name)
         }
         try Check.count(weeks, path + ".weeks", minimum: 0, maximum: 12)
         for (i, week) in weeks.enumerated() { try week.validate(path + ".weeks[\(i)]") }

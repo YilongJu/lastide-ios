@@ -11,6 +11,10 @@ enum ScreenshotScreen: String, CaseIterable, Sendable {
     case queueWaiting
     /// The same PC, with an empty queue.
     case queueEmpty
+    /// The same PC's Library while it does not measure violations yet: the counters arrive as null.
+    case libraryNotMeasured
+    /// The same PC's Learning screen while it does not measure repeat corrections, violations or a daily cap yet.
+    case learningNotMeasured
 }
 
 /// A screenshot run: `-LastideScreen <screen> -LastideColorScheme light|dark`. The run uses demo data only, and never
@@ -59,6 +63,9 @@ struct LastideApp: App {
                                             store: try ScreenshotStaging.store(queue: true, waitingApproval: true))
                 case .queueEmpty:
                     model.showForScreenshot(records: [try ScreenshotStaging.record()], store: try ScreenshotStaging.store(queue: false))
+                case .libraryNotMeasured, .learningNotMeasured:
+                    model.showForScreenshot(records: [try ScreenshotStaging.record()],
+                                            store: try ScreenshotStaging.store(queue: true, measured: false))
                 case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings: break
                 }
                 _model = State(initialValue: model)
@@ -115,12 +122,26 @@ enum ScreenshotStaging {
 
     /// A paired store drawn from the demo fixtures. Without `queue` it holds no queue snapshot, so the queue is empty.
     /// `waitingApproval` approves the first draft the phone may act on, and marks the envelope stored by the relay.
-    static func store(queue: Bool, waitingApproval: Bool = false) throws -> ReviewStore {
+    /// Without `measured`, every count that the PC does not measure yet arrives as null (protocol 7.3).
+    static func store(queue: Bool, waitingApproval: Bool = false, measured: Bool = true) throws -> ReviewStore {
         let fixtures = try DemoFixtures.load()
+        var library = fixtures.library
+        var counts = fixtures.counts
+        if !measured {
+            for index in library.rules.indices {
+                library.rules[index].violationsSinceApproval = nil
+                library.rules[index].violationsLast30Days = nil
+            }
+            counts.repeatCorrectionsThisWeek = nil
+            counts.repeatCorrectionsLastWeek = nil
+            counts.violationsThisWeek = nil
+            counts.draftCap = nil
+            counts.weeks = []
+        }
         var store = ReviewStore(cache: ReviewCache(), outbox: [])
         if queue { store.apply(.queue(fixtures.queue)) }
-        store.apply(.library(fixtures.library))
-        store.apply(.counts(fixtures.counts))
+        store.apply(.library(library))
+        store.apply(.counts(counts))
         if waitingApproval {
             guard let draft = store.drafts.first(where: { !$0.desktopOnly }) else {
                 preconditionFailure("the demo queue holds no draft that the phone may act on")

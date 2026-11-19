@@ -28,23 +28,23 @@ public enum QueueFilter: String, Sendable, CaseIterable {
 public enum ItemStatus: Hashable, Sendable {
     /// The person may act on the item.
     case ready
-    /// The PC accepts this item's decisions only on the desktop.
-    case desktopOnly
+    /// The PC accepts this item's decisions only on the desktop. A draft and a rule read differently.
+    case desktopOnly(TargetType)
     /// A decision waits in the outbox, and the relay has not answered `stored`.
     case notSent
     /// The relay stored the decision, and the PC has not acknowledged it.
     case waitingForPC
     /// The PC refused the last decision on this item.
-    case refused(RefusalReason)
+    case refused(RefusalReason, TargetType)
 
     /// The fixed sentence for this status, or nil for `ready`.
     public var displayText: String? {
         switch self {
         case .ready: return nil
-        case .desktopOnly: return "Approve this one on your PC"
+        case .desktopOnly(let type): return RefusalReason.desktopOnly.displayText(for: type)
         case .notSent: return "Not sent yet"
         case .waitingForPC: return "Waiting for your PC"
-        case .refused(let reason): return reason.displayText
+        case .refused(let reason, let type): return reason.displayText(for: type)
         }
     }
 
@@ -64,6 +64,9 @@ public enum ReviewText {
     /// The rationale and words areas while the PC is offline.
     public static let appearsWhileOnline = "Appears while your PC is online"
 
+    /// The value of a count that the PC sends as null (protocol 7.3).
+    public static let notMeasured = "Not measured yet"
+
     /// The line under a list whose snapshot dropped items.
     public static func moreOnPC(_ omitted: Int) -> String { "\(omitted) more on your PC" }
 
@@ -78,7 +81,7 @@ public enum ReviewText {
 /// Why the phone refused to build a decision before sending it.
 public enum ReviewError: Error, Equatable, Sendable {
     case unknownItem
-    case desktopOnly
+    case desktopOnly(TargetType)
     case decisionPending
     case actionDoesNotFit
     case importedRule
@@ -185,8 +188,8 @@ public struct ReviewStore: Hashable, Sendable {
     /// What the item's card shows about its actions.
     public func status(of target: Target) -> ItemStatus {
         if let entry = outbox.first(where: { $0.decision.target == target }) { return entry.stored ? .waitingForPC : .notSent }
-        if isDesktopOnly(target) { return .desktopOnly }
-        if let reason = cache.refusals[target] { return .refused(reason) }
+        if isDesktopOnly(target) { return .desktopOnly(target.targetType) }
+        if let reason = cache.refusals[target] { return .refused(reason, target.targetType) }
         return .ready
     }
 
@@ -245,7 +248,7 @@ public struct ReviewStore: Hashable, Sendable {
     public mutating func decide(_ target: Target, action: DecisionAction, text: String?, scopeOptionId: String?,
                                 now: Int) throws -> Decision {
         guard let options = scopeOptions(of: target), let version = cache.seenAt[target] else { throw ReviewError.unknownItem }
-        guard !isDesktopOnly(target) else { throw ReviewError.desktopOnly }
+        guard !isDesktopOnly(target) else { throw ReviewError.desktopOnly(target.targetType) }
         guard !outbox.contains(where: { $0.decision.target == target }) else { throw ReviewError.decisionPending }
         guard action.fits(target.targetType) else { throw ReviewError.actionDoesNotFit }
         if action == .edit, rule(id: target.id)?.source == .imported { throw ReviewError.importedRule }
@@ -258,12 +261,9 @@ public struct ReviewStore: Hashable, Sendable {
             guard text == nil else { throw ReviewError.invalidText }
             guard scopeOptionId == nil else { throw ReviewError.invalidScope }
         }
-        if let text {
-            let length = text.unicodeScalars.count
-            guard length >= 1, length <= LastideProtocol.largestEditText,
-                  !text.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" })
-            else { throw ReviewError.invalidText }
-        }
+        if let text, TextRule.problem(in: text) != nil { throw ReviewError.invalidText }
+        // The PC stores the NFC form, and the decision's schema counts code points, so the phone sends NFC (section 7.4).
+        let text = text.map(\.precomposedStringWithCanonicalMapping)
         if let scopeOptionId, !options.contains(where: { $0.id == scopeOptionId }) { throw ReviewError.invalidScope }
 
         let decision = Decision(id: makeMessageID(), sentAt: now, decisionId: makeMessageID(), target: target,

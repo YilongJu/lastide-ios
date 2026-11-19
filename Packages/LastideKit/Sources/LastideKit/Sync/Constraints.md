@@ -15,6 +15,7 @@ Terms:
 | `base.id`, `b64u16` | Canonical base64url of 16 bytes, 22 characters | `Check.b64u16` |
 | `b64u32` | Canonical base64url of 32 bytes, 43 characters | `Check.b64u32` |
 | `time`, `count`, `storeVersion` | An integer from 0 to 2^53 - 1 | Codable `Int`, `Check.integer` |
+| `countOrNull` | A `count` or null. Null means the PC does not measure that count yet | `KeyedDecodingContainer.nullable`, `Check.optionalInteger` |
 | `schemaRevision` | An integer from 1 to 65535 | `Check.schemaRevision` |
 | `itemId` | `^[A-Za-z0-9._:-]{1,64}$` | `Check.itemID` |
 | `projectName` | A string of 1 to 128 code points | `Check.text` |
@@ -36,7 +37,7 @@ Terms:
 | `rule.source`, `rule.state` | One listed value | `RuleSource`, `RuleState` |
 | `rule.approvedAt`, `editedAt`, `lastSeenAt` | Nullable times | `Rule` decoding, `Check.optionalInteger` |
 | `rule.editedOn` | Nullable; `desktop` or `phone` | `Rule` decoding, `EditedOn` |
-| `rule` counters | Integers from 0 to 2^53 - 1 | `Rule.validate` |
+| `rule` counters | Integers from 0 to 2^53 - 1. `violationsSinceApproval` and `violationsLast30Days` are nullable (`countOrNull`) | `Rule` decoding, `Rule.validate` |
 | `target` | `targetType` is `draft` or `rule`; `id` is an item id | `Target.validate` |
 
 ## Messages
@@ -52,7 +53,7 @@ Terms:
 | `pair-accept` | `features` holds unique values from `mailbox` and `push`, and contains `mailbox` | `PairAccept.validate`, `Feature` |
 | `pair-refuse` | `reason` is one of the five listed values | `PairRefuseReason` |
 | `queue`, `library` | `schema`, `storeVersion`, `omitted`; every draft or rule | `QueueSnapshot.validate`, `LibrarySnapshot.validate` |
-| `counts` | Every number is a count; `weeks` holds at most 12 items | `Counts.validate` |
+| `counts` | Every number is a count; `repeatCorrectionsThisWeek`, `repeatCorrectionsLastWeek`, `violationsThisWeek` and `draftCap` are nullable (`countOrNull`); `weeks` holds at most 12 items | `Counts` decoding, `Counts.validate` |
 | `counts.weeks[]` | `weekStart` matches `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | `Check.weekStart` |
 | `evidence` | `requestId` is b64u16; `draftId` is an item id | `Evidence.validate` |
 | `evidence.rationale` | Nullable; at most 1000 code points | `Evidence` decoding and `validate` |

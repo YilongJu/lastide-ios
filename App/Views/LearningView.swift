@@ -18,13 +18,14 @@ struct LearningView: View {
                     let current = counts.weeks.last?.weekStart
                     Section("This week") {
                         LabeledContent {
-                            Text("\(counts.repeatCorrectionsThisWeek)").monospacedDigit()
+                            Text(Words.count(counts.repeatCorrectionsThisWeek)).monospacedDigit()
                         } label: {
                             Text("Repeat corrections")
-                            Text("Last week \(counts.repeatCorrectionsLastWeek)")
+                            Text(counts.repeatCorrectionsLastWeek.map { "Last week \($0)" }
+                                 ?? "Last week: " + ReviewText.notMeasured)
                         }
                         LabeledContent {
-                            Text("\(counts.violationsThisWeek)").monospacedDigit()
+                            Text(Words.count(counts.violationsThisWeek)).monospacedDigit()
                         } label: {
                             Text("Violations")
                         }
@@ -34,11 +35,20 @@ struct LearningView: View {
                             Text("Rules approved")
                         }
                         LabeledContent {
-                            Text("\(counts.draftsToday) of \(counts.draftCap)").monospacedDigit()
+                            Text(counts.draftCap.map { "\(counts.draftsToday) of \($0)" } ?? "\(counts.draftsToday)").monospacedDigit()
                         } label: {
                             Text("Drafts today")
+                            if counts.draftCap == nil { Text("Daily limit: " + ReviewText.notMeasured) }
                         }
                     }
+                    if counts.weeks.isEmpty {
+                        Section("Repeat corrections per week") {
+                            Text(ReviewText.notMeasured).foregroundStyle(.secondary)
+                        }
+                        Section("Violations per week") {
+                            Text(ReviewText.notMeasured).foregroundStyle(.secondary)
+                        }
+                    } else {
                     Section {
                         Chart(counts.weeks, id: \.weekStart) { week in
                             BarMark(x: .value("Week", Self.label(week.weekStart)),
@@ -66,6 +76,7 @@ struct LearningView: View {
                     } footer: {
                         Text(Self.caption(counts.weeks.map(\.violations), noun: "violations")
                              + " A shorter bar is better. The solid bar is this week.")
+                    }
                     }
                 } else {
                     Section { Text(ReviewText.appearsWhileOnline).foregroundStyle(.secondary) }

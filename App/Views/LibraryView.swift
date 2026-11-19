@@ -78,7 +78,7 @@ struct RuleRow: View {
         if let badge { StatusBadge(text: badge, systemImage: status.symbol) }
     }
 
-    private var badge: String? { rule.desktopOnly ? nil : status.displayText }
+    private var badge: String? { status.displayText }
 
     private var lastSeen: String {
         guard let time = rule.lastSeenAt else { return "Not broken since approval" }
@@ -147,8 +147,8 @@ struct RuleDetailView: View {
             }
             Section("Counters") {
                 LabeledContent("Corrections before approval", value: "\(rule.correctionsBeforeApproval)")
-                LabeledContent("Violations since approval", value: "\(rule.violationsSinceApproval)")
-                LabeledContent("Violations in the last 30 days", value: "\(rule.violationsLast30Days)")
+                LabeledContent("Violations since approval", value: Words.count(rule.violationsSinceApproval))
+                LabeledContent("Violations in the last 30 days", value: Words.count(rule.violationsLast30Days))
                 LabeledContent("Last broken", value: rule.lastSeenAt.map(Words.date) ?? "Never")
                 LabeledContent("Approved", value: rule.approvedAt.map(Words.date) ?? "Not recorded")
                 LabeledContent("Agents", value: Words.agents(rule.agents))
@@ -156,7 +156,7 @@ struct RuleDetailView: View {
             }
             Section {
                 if rule.desktopOnly {
-                    StatusBadge(text: ItemStatus.desktopOnly.displayText!, systemImage: ItemStatus.desktopOnly.symbol)
+                    StatusBadge(text: ItemStatus.desktopOnly(.rule).displayText!, systemImage: ItemStatus.desktopOnly(.rule).symbol)
                 } else {
                     if let line = status.displayText { StatusBadge(text: line, systemImage: status.symbol) }
                     // Turn On and Turn Off (protocol Table 23) as one switch.

@@ -67,12 +67,12 @@ public enum AcknowledgementResult: String, Codable, Sendable, CaseIterable { cas
 public enum RefusalReason: String, Codable, Sendable, CaseIterable {
     case expired, gone, desktopOnly, staleVersion, invalidAction, invalidText, invalidScope
 
-    /// The fixed sentence of Table 22.
-    public var displayText: String {
+    /// The fixed sentence of Table 22. Only `desktopOnly` reads differently for a draft and a rule.
+    public func displayText(for targetType: TargetType) -> String {
         switch self {
         case .expired: return "This change waited too long. Make it again."
         case .gone: return "Your PC already handled this one."
-        case .desktopOnly: return "Approve this one on your PC"
+        case .desktopOnly: return targetType == .draft ? "Approve this one on your PC" : "Change this one on your PC"
         case .staleVersion: return "Your PC changed this one. Review the new version."
         case .invalidAction: return "Your PC could not apply this change."
         case .invalidText: return "Your PC could not use this text."

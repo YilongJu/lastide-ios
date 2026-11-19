@@ -412,7 +412,9 @@ final class AppModel {
             session?.notePCSchema(counts.schema)
             store.apply(message)
         case .acknowledgement:
-            if case .refused(_, let reason) = store.apply(message) { notice = reason.displayText }
+            if case .refused(let target, let reason) = store.apply(message) {
+                notice = reason.displayText(for: target.targetType)
+            }
         case .evidence(let words):
             guard var open = evidence, open.draftID == words.draftId, open.requestID == words.requestId,
                   let draft = store.draft(id: words.draftId), draft.changedAtStoreVersion == words.changedAtStoreVersion

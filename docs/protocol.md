@@ -157,7 +157,7 @@ Table 3. A party sees metadata at most unless it holds a private key. The check 
 | A network attacker between a device and the relay | See that a device talks to the relay, when, and how much. Block traffic | Read hello frames or envelopes, because TLS covers them. With a trusted root certificate on the device, the attacker gets the relay's view above and nothing more |
 | Someone who photographs the QR code | Within 120 s, open the pairing socket before the person's phone does. That stops the person's pairing, and the person starts again with a new code. Seal messages to the PC key at any time | Complete a pairing. The PC answers one pair request per code. The person's phone shows a code only after the PC answers that phone's own request. A code that the person types matches the attacker's request at most 3 times in 1,000,000 per QR code. Use the ticket after 120 s, or after a phone used it. Join the room, because they lack a token. Get a sealed message accepted. The PC opens only pair requests that answer its open QR code, and Auth-mode messages from paired phones |
 | Someone who finds a lost phone, without its passcode | Read notification text on the lock screen in phase 7, unless the person hides previews in iOS settings | Read the cached data, because its files open only while the phone is unlocked. Read the keys while the phone has not been unlocked since its last restart. After the first unlock, the system can read the keys until the next restart. The phase 7 extension needs that to decrypt on a locked phone. Approve or delete from the lock screen, because both actions require an unlocked device |
-| Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop then shows a notice that lists each applied phone decision, names the phone and offers Revoke | Approve hook templates or deny rules, because the PC accepts those only on the desktop. Act after Revoke on the PC |
+| Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a rule in a project's agent files. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
 | Anyone who holds a revoked phone's keys and token | Read what the phone stored before the revoke. Open the envelopes it recorded before the revoke, except evidence words | Connect, because the relay deleted its token hash. The phone bridge repeats `remove-phone` until the relay confirms it. Receive new messages, because the PC stopped sealing to its key and the relay deleted its mailbox. Get a frame accepted, because the PC deleted its phone key. Pair again without a new QR code on the PC |
 | Anyone who knows the pairing id, such as a QR code viewer or a revoked phone | Open sockets to the room that wait for `hello`. Each such socket closes the oldest waiting socket when the room's limit is reached | Join the room, because joining needs a token or an open ticket. Hold a waiting socket for more than 10 s. Hold more than 2 waiting sockets from one client address |
 | APNs (phase 7) | See the device token, the time and the size of each push | Read the push body, because the PC seals it to the phone key |
@@ -226,7 +226,7 @@ The Secure Enclave cannot hold the phone key. CryptoKit's `SecureEnclave` offers
 
 - Every envelope uses a fresh ephemeral key. Each envelope therefore gets its own AEAD key and nonce.
 - The phone key and the phone token change with every pairing. To rotate them, the person ends the pairing on either device and scans a new code.
-- "Reset Phone Pairing" in Lastide Settings makes a new PC key, a new pairing id and a new PC token. The phone bridge first sends `delete-room` for the old room, and every phone must scan again. The person uses it after a suspected compromise of the PC.
+- "Reset Phone Pairing" deletes the PC key, the pairing id, the PC token and the old room (Table 19). The next "Pair a Phone" makes new ones, and every phone must scan again. The person uses it after a suspected compromise of the PC.
 - Version 1 does not rotate keys on a timer. Only the QR code carries the PC key, so a new PC key always needs a new scan.
 
 ## 3. The QR payload
@@ -284,7 +284,7 @@ The example string has 140 characters. The `qrcode` npm package 1.5.4 encodes it
 ### 4.1 Before the first QR code, the PC creates its room
 
 1. The phone bridge makes the PC key, a pairing id and a PC token.
-2. The phone bridge sends `POST /api/relay/<pairing id>` with the account's session token and the hash of the PC token (section 6.1).
+2. The desktop window sends `POST /api/relay/<pairing id>` with the account's session token and the hash of the PC token (section 6.1). The phone bridge supplies the pairing id and the hash. The session token stays in the window's secret storage, so the phone bridge never holds it.
 3. The Worker checks the session and the account's count of live rooms. The Worker refuses a pairing id that any room used before. Then the Worker creates the room.
 4. The phone bridge opens its socket as `pc` (section 6.3) and keeps it open while the desktop app runs.
 
@@ -352,7 +352,7 @@ sequenceDiagram
 21. Phone: the app opens `pair-accept` in Auth mode, as in step 15. The app checks `pairingId` and `phoneId` again, and checks that the `seq` is above the `seq` of `pair-received`. The app stores the pairing and shows "Paired with" and the PC's name, for example "Paired with My PC".
 22. Phone: the app connects as `phone` and sends a `sync` message. The PC answers with the queue, the library and the learning counts.
 
-The PC marks the phone's record confirmed when the relay first reports that phone online. A record still unconfirmed after 10 minutes is removed with `remove-phone`. The timeout covers a `pair-accept` that never reached the phone.
+The PC marks the phone's record confirmed when the relay first reports that phone online, in `presence` or in `welcome.phonesOnline`. A message from the phone that opens confirms the record too. A record still unconfirmed after 10 minutes of connected time is removed with `remove-phone`. The 10 minutes count only while the PC's socket is open. A PC that sleeps or quits cannot see the phone come online. The timeout covers a `pair-accept` that never reached the phone.
 
 ### 4.4 Info strings and the exporter context
 
@@ -414,10 +414,12 @@ Table 8. After pairing, the PC holds one record per phone and the phone holds on
 
 | Side | Item | Where | Content |
 | --- | --- | --- | --- |
-| PC | Identity | `<user data>/lastide/phone-bridge/identity.json` | `pairingId`, `relayOrigin`, `pcPublicKey` (base64url), `pcPrivateKey` and `pcToken` encrypted by `safeStorage`, `lastSentSeq` |
-| PC | Phone records | `<user data>/lastide/phone-bridge/phones.json` | `phones`: one record per phone with `phoneId`, `phoneKey` (public, base64url), `name` (typed at pairing, editable), `model`, `pairedAt`, `confirmedAt` or null, `lastSeenAt`, `lastRecvSeq`, `schema`, `appVersion`, `appBuild` and `consent` (`disclosure`, `acceptedAt`). `pendingRemovals`: the device ids whose `remove-phone` the relay has not confirmed |
+| PC | Identity | `<user data>/lastide/phone-bridge/identity.json` | `pairingId`, `relayOrigin`, `pcPublicKey` (base64url), `pcPrivateKey` and `pcToken` encrypted by `safeStorage`, `createdAt`, `roomCreatedAt`. The phone bridge writes the file only when it makes the identity, encrypts again or resets |
+| PC | Sequence | `<user data>/lastide/phone-bridge/seq.json` | `lastSentSeq`, written before each envelope leaves (section 5.4) |
+| PC | Phone records | `<user data>/lastide/phone-bridge/phones.json` | `phones`: one record per phone with `phoneId`, `phoneKey` (public, base64url), `name` (typed at pairing, editable), `model`, `pairedAt`, `confirmedAt` or null, `lastSeenAt`, `lastRecvSeq`, `schema`, `appVersion`, `appBuild` and `consent` (`disclosure`, `acceptedAt`). `pendingRemovals`: the device id and the phone's name of each phone whose `remove-phone` the relay has not confirmed. `voided`: the name and the time of each phone that a deleted room ended |
+| PC | Retiring rooms | `<user data>/lastide/phone-bridge/retiring.json` | Each old room that a Reset Phone Pairing could not delete yet: `pairingId`, `relayOrigin`, `pcToken` encrypted by `safeStorage`, `pendingRemovals` and `retiredAt` (Table 19) |
 | PC | PC name | The PC name field in Lastide Settings | A name the person sets, "My PC" by default. The phone bridge never sends the Windows computer name |
-| PC | Decision results | The rule learning service's `decisions.jsonl` | Each phone decision's `decisionId`, the device id from its envelope header, its `decidedAt` and its acknowledgement. A repeated decision gets the same answer |
+| PC | Decision results | The rule learning service's `decisions.jsonl` | Each phone decision's `decisionId`, the device id from its envelope header, the phone's name, `decidedAt`, its result, its reason and the store version after it. The file keeps hashes of the text before and after, and never `current`. A repeated decision gets the same result, with `current` rebuilt (section 7.4) |
 | Phone | Secrets per pairing | Keychain, section 2.3 | Phone private key, phone token |
 | Phone | One record per PC | `pairings.json` in the app's container, class `NSFileProtectionCompleteUntilFirstUserAuthentication` | `pairingId`, `relayOrigin`, `pcKey`, `pcName`, `pcSchema`, `phoneId`, `pairedAt`, `pcLastSeenAt`, `lastSentSeq`, `lastRecvSeq`, `features` |
 | Phone | Cached snapshots | A file in the app's container, class `NSFileProtectionComplete` | The newest `queue`, `library` and `counts` per PC |
@@ -541,6 +543,8 @@ The receiver runs these checks in this order. Steps 1 to 5 drop the frame silent
 
 Once step 5 succeeds, the receiver always runs steps 9 and 10, whatever steps 6 to 8 decide. So a mailbox envelope that fails step 6 or 7 still leaves the mailbox. When step 6 or 7 fails, the receiver skips step 8 and sends one `error` message with the code that Table 12 gives.
 
+A `decision` on the PC is the one exception. The PC runs steps 9 and 10 for a decision only when the rule learning service answers with an acknowledgement. A rejected call, a closed channel, 10 s without an answer and an app quit all skip both steps. The PC then drops the frames queued behind the decision, ignores the rest of that socket and closes it. The mailbox keeps the decision and every frame behind it for the next connection.
+
 Table 12. Each failure after a good open maps to one error code, and an error never draws an error.
 
 | Failure | Code in the `error` message |
@@ -644,10 +648,10 @@ Table 13. The relay answers five requests, and the fifth arrives in phase 7.
 
 | Method and path | Who calls | Request | Answers |
 | --- | --- | --- | --- |
-| `POST /api/relay/<pairing id>` | Phone bridge, once per pairing id | `Authorization: Bearer <account session token>`; JSON body `{"pcTokenHash": "<base64url, 32 bytes>"}`, plus `"demo": true` for a demo room | `201 {"created": true}`; `400` for a bad body; `401` without a valid session; `403` for `demo` from an account that the Worker secret `RELAY_DEMO_ACCOUNTS` does not list; `409` when any room ever used the pairing id; `429 {"error": "roomLimit"}` when the account holds 5 live rooms; `500` when the room's storage fails the creation. The pairing id is then spent, and the PC makes a new identity (section 2.4) |
+| `POST /api/relay/<pairing id>` | The desktop window, once per pairing id. The phone bridge supplies the pairing id and the token hash | `Authorization: Bearer <account session token>`; JSON body `{"pcTokenHash": "<base64url, 32 bytes>"}`, plus `"demo": true` for a demo room | `201 {"created": true}`; `400` for a bad body; `401` without a valid session; `403` for `demo` from an account that the Worker secret `RELAY_DEMO_ACCOUNTS` does not list; `409` when any room ever used the pairing id; `429 {"error": "roomLimit"}` when the account holds 5 live rooms; `500` when the room's storage fails the creation. The pairing id is then spent, and the PC makes a new identity (section 2.4) |
 | `GET /api/relay` | Lastide Settings and the account page | `Authorization: Bearer <account session token>` | `200 {"rooms": [{"pairingId": "<base64url>", "createdAt": <time>, "pcLastSeenAt": <time or null>}]}` with the account's live rooms; `401` without a valid session |
-| `DELETE /api/relay/<pairing id>` | The account that created the room, from the website or the PC | `Authorization: Bearer <account session token>` | `204`; `404` when no live room has that id or another account created it |
-| `GET /api/relay/<pairing id>` with `Upgrade: websocket` | PC and phones | `Sec-WebSocket-Protocol: lastide-relay.1` | `101` with `Sec-WebSocket-Protocol: lastide-relay.1`; `404` when no live room has that id; `426` without the upgrade or the subprotocol; `429` when closed sockets from the client's address hold its 2 places (section 6.2) |
+| `DELETE /api/relay/<pairing id>` | The account that created the room, from the website or the desktop window | `Authorization: Bearer <account session token>` | `204`; `404` when no live room has that id or another account created it |
+| `GET /api/relay/<pairing id>` with `Upgrade: websocket` | PC and phones | `Sec-WebSocket-Protocol: lastide-relay.1` | `101` with `Sec-WebSocket-Protocol: lastide-relay.1`; for a deleted room, `101` and then close 4404 after the device's first frame or after 2 s; `404` when no room ever had that id; `426` without the upgrade or the subprotocol; `429` when closed sockets from the client's address hold its 2 places (section 6.2) |
 | `POST /api/relay/<pairing id>/frames`, phase 7 | Phone, from a notification action | `Lastide-Device: <device id, base64url>`; `Content-Type: application/octet-stream`; body: the 32-byte phone token, then one envelope | `202 {"stored": true, "seq": <seq>}` or `202 {"delivered": true, "seq": <seq>}`; `401`; `413` over 262,176 bytes. A version 1 relay answers `404 {"error": "unsupported"}` |
 
 The Worker checks the account session the same way the gateway does: Better Auth's `getSession` on the bearer token. The Worker keeps one D1 table of rooms:
@@ -667,7 +671,7 @@ A deleted room keeps its row with `deleted_at` set. That row stops any account f
 
 The Worker reaches the room with `env.RELAY.idFromName(pairingId)`. The Worker forwards the upgrade request with `stub.fetch(request)`. For the account requests, the Worker calls the room's RPC methods `create(pairingId, creatorUserId, pcTokenHash, demo)` and `destroy()`. `pcTokenHash` is a 32-byte `ArrayBuffer`, and `demo` is a boolean. The room reaches D1 through the `DB` binding in its own `env`. The room writes `pc_last_seen_at` at most once a day, and it sets `deleted_at` when it deletes itself.
 
-Before the Worker forwards an upgrade, it reads `relay_rooms`. When no live row has the pairing id, the Worker answers 404 itself. A random pairing id therefore starts no Durable Object.
+Before the Worker forwards an upgrade, it reads `relay_rooms`. When no row has the pairing id, the Worker answers 404 itself. A random pairing id therefore starts no Durable Object. When the row has `deleted_at` set, the Worker accepts the socket itself and answers 101. The Worker closes that socket with 4404 after the device's first frame, or after 2 s when no frame arrives. A deleted room therefore wakes no Durable Object either. A client whose socket API hides the HTTP status of a failed upgrade still learns that the room is gone. Electron's `net.WebSocket` is such a client.
 
 The Worker inserts the row before it calls `create`. When `create` throws, the Worker sets `deleted_at` on that row and answers 500. The row then counts neither for the cap nor as a live room. After `destroy()` answers a `DELETE`, the Worker also sets `deleted_at`. That covers a room whose storage holds no room row.
 
@@ -675,7 +679,7 @@ The Durable Object binding takes a SQLite migration entry, `{"tag": "v1", "new_s
 
 ### 6.2 Opening a socket
 
-1. The device opens `wss://<relay host>/api/relay/<pairing id>` and offers the subprotocol `lastide-relay.1`. A phone builds the URL as section 3.2 says. URLSession uses `webSocketTask(with:protocols:)`. Node 24's global `WebSocket` takes the protocols as its second argument, and the phone bridge sets `binaryType` to `"arraybuffer"`.
+1. The device opens `wss://<relay host>/api/relay/<pairing id>` and offers the subprotocol `lastide-relay.1`. A phone builds the URL as section 3.2 says. URLSession uses `webSocketTask(with:protocols:)`. The phone bridge uses Electron's `net.WebSocket` in the main process. Like Node 24's global `WebSocket`, it takes the protocols as its second argument. The phone bridge sets `binaryType` to `"arraybuffer"`. Chromium's network stack then gives the socket the system proxy and the system's certificate checks.
 2. The room accepts the socket with `ctx.acceptWebSocket(server)` and answers `101` with the subprotocol header. The room marks the socket waiting in its attachment. The attachment also holds `addrHash`, the first 8 bytes of HMAC-SHA-256 of the `CF-Connecting-IP` header. The key is the room's random `addr_key` (section 6.12), so a copy of the storage does not give the address back. Cloudflare's edge always sets that header. The room treats an upgrade without it as a relay error. `wrangler dev` does not set it, so a local client sends it itself.
 3. When the room already holds 4 waiting sockets, the room closes the oldest one with 4408. When the new socket's client address already holds 2 waiting sockets, the room closes that address's oldest one with 4408 instead.
 4. A socket that the room closed stays in `ctx.getWebSockets()` until its client answers the Close frame or drops the connection. The runtime has no call that removes it sooner. `wrangler dev` 4.86 kept such sockets for at least 50 s, until the client dropped TCP. A closed socket that never passed `hello` keeps its `addrHash` and counts toward its address's 2 places. When those places hold only such closed sockets, the Worker answers the upgrade with HTTP 429.
@@ -796,7 +800,7 @@ Table 17. Every close code tells the device what to do next.
 | 4401 | Unauthorized | Unknown token, unknown device, or a ticket that is wrong, used or expired | A phone with a pairing shows "This PC no longer accepts this phone." A pairing socket shows "This code no longer works. Show a new code on your PC." |
 | 4402 | Attestation refused, phase 7 | App Attest did not verify | Shows "Pairing needs the App Store or TestFlight build of Lastide." |
 | 4403 | Forbidden | An envelope that fails check 7 or 8 of section 6.5, or a control frame the role may not send | Logs the code; the sender has a bug |
-| 4404 | Room gone | The room was deleted while the socket was open | The phone offers to remove the PC. The PC follows the "Room gone" row of Table 19 |
+| 4404 | Room gone | The room was deleted, while the socket was open or before it opened (section 6.1) | The phone offers to remove the PC. The PC follows the "Room gone" row of Table 19 |
 | 4408 | Timeout | No `hello` in 10 s, a newer waiting socket, a fifth pairing socket, no `ping` for 90 s, or a pairing socket older than 600 s | Reconnects. A pairing socket shows "The connection timed out. Show a new code on your PC." |
 | 4409 | Replaced | The same device opened a newer socket | Does not reconnect from this socket |
 | 4410 | Revoked | The PC removed this phone while it was connected | Shows "This PC removed this phone." |
@@ -866,10 +870,10 @@ Table 19. Every way a pairing ends deletes the phone's token hash and its mailbo
 
 | Action | Who starts it | Steps |
 | --- | --- | --- |
-| Revoke | The person, on the PC's phone record | The phone bridge deletes the phone's record and key, and adds the device id to `pendingRemovals`. The phone bridge sends `remove-phone`. The relay deletes the phone row and every mailbox row to or from the phone. The relay then closes the phone's socket with 4410. After each `welcome`, the phone bridge sends `remove-phone` again for each entry of `pendingRemovals`. An entry leaves the list when the relay answers `ok`, or `refused` with `unknownDevice` |
+| Revoke | The person, on the PC's phone record | The phone bridge deletes the phone's record and key, and adds the device id and the phone's name to `pendingRemovals`. The phone bridge sends `remove-phone`. The relay deletes the phone row and every mailbox row to or from the phone. The relay then closes the phone's socket with 4410. After each `welcome`, the phone bridge sends `remove-phone` again for each entry of `pendingRemovals`. An entry leaves the list when the relay answers `ok`, or `refused` with `unknownDevice` |
 | Remove PC | The person, on the phone | The phone sends the `unpair` sync message with MAILBOX set and waits up to 10 s for `stored`. The phone deletes its Keychain items and its pairing record. When the PC reads `unpair`, it runs Revoke |
-| Reset Phone Pairing | The person, on the PC | The phone bridge sends `delete-room`, then makes a new identity (section 2.4) |
-| Room gone | The PC's upgrade answers 404, or its socket closes with 4404 | The phone bridge marks every phone record void and tells the person "Your phones need to pair again." The phone bridge then makes a new identity, as Reset Phone Pairing does, without `delete-room` |
+| Reset Phone Pairing | The person, on the PC | Connected: the phone bridge sends `delete-room`. Offline and signed in: the desktop window sends `DELETE /api/relay/<pairing id>`. When neither works, the phone bridge moves the old room's id, origin, PC token and pending removals to `retiring.json`. Then the phone bridge deletes the identity and the phone records. At each start it opens one socket as `pc` to each retiring room. It sends each pending `remove-phone`, then `delete-room`, and drops the entry on `ok` or close 4404. The next "Pair a Phone" makes a new identity and room (section 2.4) |
+| Room gone | The PC's socket closes with 4404 | The phone bridge moves every phone record to `voided` and deletes the identity and the pending removals. It tells the person "Your phones need to pair again." The next "Pair a Phone" makes the new identity and room, because a new room needs the signed-in account |
 | Room deletion | `delete-room`, the account's `DELETE`, or 90 days without a PC connection | The relay closes every socket with 4404. The room sets `deleted_at` on its row in `relay_rooms` and calls `ctx.storage.deleteAll()` |
 
 The site's compatibility date is later than 2026-02-24, so `deleteAll()` also deletes the room's alarm.
@@ -990,7 +994,7 @@ Each `items[].evidenceId` equals an `id` in the draft's `evidence` list at the d
 
 The schema below is normative and uses JSON Schema draft 2020-12. Every message must validate against the schema of its `type`.
 
-The phone bridge and the relay's tests validate with Ajv 8.17.1's draft 2020-12 build (`ajv/dist/2020`) in strict mode. `LastideKit` decodes each message into Codable types and checks every constraint of the schema in code. A written list of those constraints sits beside the types, in `Sources/LastideKit/Sync/Constraints.md`. The demo fixtures of section 8.1 and the vector's plaintexts are the conformance test for both. Swift counts a `maxLength` in `unicodeScalars`, because `String.count` counts grapheme clusters.
+The phone bridge checks every constraint of the schema in code, without Ajv at run time. Its tests hold those checks equal to Ajv 8.17.1's draft 2020-12 build (`ajv/dist/2020`) in strict mode. The relay's tests validate with that build too. `LastideKit` decodes each message into Codable types and checks every constraint of the schema in code. A written list of those constraints sits beside the types, in `Sources/LastideKit/Sync/Constraints.md`. The demo fixtures of section 8.1 and the vector's plaintexts are the conformance test for both. Swift counts a `maxLength` in `unicodeScalars`, because `String.count` counts grapheme clusters.
 
 ```json
 {
@@ -1019,6 +1023,7 @@ The phone bridge and the relay's tests validate with Ajv 8.17.1's draft 2020-12 
     "b64u32": { "type": "string", "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$" },
     "time": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "countOrNull": { "oneOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }] },
     "storeVersion": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "schemaRevision": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "itemId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,64}$" },
@@ -1126,8 +1131,8 @@ The phone bridge and the relay's tests validate with Ajv 8.17.1's draft 2020-12 
         "editedAt": { "oneOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }] },
         "editedOn": { "enum": ["desktop", "phone", null] },
         "correctionsBeforeApproval": { "$ref": "#/$defs/count" },
-        "violationsSinceApproval": { "$ref": "#/$defs/count" },
-        "violationsLast30Days": { "$ref": "#/$defs/count" },
+        "violationsSinceApproval": { "$ref": "#/$defs/countOrNull" },
+        "violationsLast30Days": { "$ref": "#/$defs/countOrNull" },
         "lastSeenAt": { "oneOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }] },
         "folderGone": { "type": "boolean" },
         "desktopOnly": { "type": "boolean" }
@@ -1241,12 +1246,12 @@ The phone bridge and the relay's tests validate with Ajv 8.17.1's draft 2020-12 
         "type": { "const": "counts" },
         "schema": { "$ref": "#/$defs/schemaRevision" },
         "storeVersion": { "$ref": "#/$defs/storeVersion" },
-        "repeatCorrectionsThisWeek": { "$ref": "#/$defs/count" },
-        "repeatCorrectionsLastWeek": { "$ref": "#/$defs/count" },
+        "repeatCorrectionsThisWeek": { "$ref": "#/$defs/countOrNull" },
+        "repeatCorrectionsLastWeek": { "$ref": "#/$defs/countOrNull" },
         "rulesApproved": { "$ref": "#/$defs/count" },
-        "violationsThisWeek": { "$ref": "#/$defs/count" },
+        "violationsThisWeek": { "$ref": "#/$defs/countOrNull" },
         "draftsToday": { "$ref": "#/$defs/count" },
-        "draftCap": { "$ref": "#/$defs/count" },
+        "draftCap": { "$ref": "#/$defs/countOrNull" },
         "weeks": {
           "type": "array", "maxItems": 12,
           "items": {
@@ -1404,7 +1409,8 @@ Field notes that the schema cannot state:
 - `draft.scope` equals one of the draft's `scopeOptions` without its `id`. The PC offers "This project" once per project, "Kind of work" when the draft names one, and "All projects".
 - A scope option `id` stays valid while its item's `changedAtStoreVersion` stays the same. A decision that fails the store version check is refused before its option is read.
 - `evidenceCount`, `sessionCount` and `projectCount` drive the card line "3 corrections, 2 projects". The `evidence` list may hold fewer items than `evidenceCount`.
-- `rule.text` and `draft.text` may hold line breaks only for imported sections. Every edit from the phone is one line of at most 500 code points.
+- `rule.text` and `draft.text` may hold line breaks only for imported sections. Every text the phone sends passes the text rule of section 7.4, check 7.
+- `null` in `repeatCorrectionsThisWeek`, `repeatCorrectionsLastWeek`, `violationsThisWeek`, `draftCap`, `violationsSinceApproval` or `violationsLast30Days` means that the PC does not measure that count yet. A zero would state a false count. The phone shows "Not measured yet" in its place.
 - `counts.weeks` runs oldest first. `weekStart` is the Monday of each week in the PC's local calendar.
 - `evidence.items[].words` holds at most 300 code points. The PC redacts email addresses and phone numbers and cuts the text before it sends.
 - `deviceName` is `UIDevice.current.name`, which reads "iPhone" from iOS 16 on without a special entitlement. `model` is the hardware model identifier from `utsname.machine`, for example "iPhone17,3". The PC shows both while the person names the phone.
@@ -1429,17 +1435,26 @@ A decision's `storeVersion` is the store version of the snapshot, acknowledgemen
 
 The phone bridge passes each decision to the rule learning service, which applies it. The phone bridge passes the envelope header's `sender` as the decision's device id, and never takes a device id from the plaintext. The service checks in this order and stops at the first refusal:
 
-1. A known `decisionId` gets its stored acknowledgement again.
+1. A known `decisionId` gets its stored result again. The PC rebuilds `current` from the item as it stands now, and the acknowledgement carries the current store version.
 2. The decision envelope's `seq` lies more than 8 days (691,200,000 ms) below the PC's clock: `expired`. The 8 days are the 7-day mailbox life plus 1 day for clock differences. A phone's resend after 6 days carries a fresh `seq`.
 3. The target does not exist: `gone`.
-4. The target is a hook template or a deny rule (`desktopOnly` true): `desktopOnly`.
+4. The target is a hook template or a deny rule (`desktopOnly` true): `desktopOnly`. The same holds when the decision would write a file under a project folder. It also holds when the target rule names a project folder that the PC has not located yet. A project's agent files are often tracked by git, so only the desktop changes them. A `saveEdit`, `reject` or `delete` of a draft writes no agent file, so this check lets it through.
 5. The target's `changedAtStoreVersion` is above the decision's `storeVersion`: `staleVersion`, with the current item in `current`.
 6. The action does not fit the target type, or edits an imported section: `invalidAction`.
-7. The text is empty, too long or holds a line break: `invalidText`.
+7. The text breaks the text rule below: `invalidText`.
 8. The scope option id is unknown for the item: `invalidScope`.
 9. Otherwise the service applies the decision and answers `applied` with `appliedAt`.
 
-Each acknowledgement carries the store version at the time of the answer, so the phone can decide again on `current`. After an applied decision, `current` holds the item as it now stands. For `approve`, that item is the new rule. After `reject` or `delete`, `current` is null. The phone removes the target from its list, then adds `current` to the list that its `targetType` names. After a refusal, the phone replaces the item with `current` when `current` is not null. The phone removes the item on `gone`. `decisions.jsonl` keeps the decision id, the device id, `decidedAt` and the acknowledgement.
+The text rule normalizes the text to NFC, then refuses four kinds of text:
+
+1. Text that is empty after trimming the space separators (general category Zs) at both ends.
+2. Text of more than 500 code points.
+3. Text with a code point of general category Cc, Cf, Co, Cn, Zl or Zp. That covers line breaks, the zero-width characters and U+FEFF. It also covers the bidi controls and the tag characters U+E0000 to U+E007F.
+4. Text with an `@` that starts a word. Such an `@` is the first code point or follows a space separator. A code point other than a space separator follows it. Claude Code reads `@README` or `@~/.ssh/id_rsa` in `CLAUDE.md` as a file import, and loads that file into every session.
+
+The agents read code points that the person cannot see. So the rule keeps every code point that reaches an agent visible. The PC stores the NFC form. The phone runs the same rule before it builds a decision, so the person can fix the text at once. The phone sends the text in NFC. The `maxLength` of the decision's schema then counts the same code points as check 7. The PC's answer still decides, because the two devices may know different Unicode versions.
+
+Each acknowledgement carries the store version at the time of the answer, so the phone can decide again on `current`. After an applied decision, `current` holds the item as it now stands. For `approve`, that item is the new rule. After `reject` or `delete`, `current` is null. The phone removes the target from its list, then adds `current` to the list that its `targetType` names. After a refusal, the phone replaces the item with `current` when `current` is not null. The phone removes the item on `gone`. `decisions.jsonl` keeps the decision id, the device id, `decidedAt`, the result, the reason and the store version after the decision. It never keeps `current`, so a repeated decision gets `current` rebuilt (check 1).
 
 Table 22. The phone shows one fixed sentence for each refusal.
 
@@ -1447,13 +1462,13 @@ Table 22. The phone shows one fixed sentence for each refusal.
 | --- | --- |
 | `expired` | "This change waited too long. Make it again." |
 | `gone` | "Your PC already handled this one." |
-| `desktopOnly` | "Approve this one on your PC" |
+| `desktopOnly` | "Approve this one on your PC" for a draft, and "Change this one on your PC" for a rule |
 | `staleVersion` | "Your PC changed this one. Review the new version." The phone then shows `current` |
 | `invalidAction` | "Your PC could not apply this change." |
 | `invalidText` | "Your PC could not use this text." |
 | `invalidScope` | "Your PC could not use this scope." |
 
-While the PC is offline, the decision waits in the mailbox and the phone shows "Waiting for your PC". The phone bridge applies waiting decisions when the desktop app next starts and its socket receives the mailbox. The desktop then shows one notice. The notice lists each decision it applied from the mailbox, with any new text, and names the phone that sent it. The notice offers Revoke for that phone.
+While the PC is offline, the decision waits in the mailbox and the phone shows "Waiting for your PC". The phone bridge applies waiting decisions when the desktop app next starts and its socket receives the mailbox. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone and shows the text before and after, with Undo and Revoke. A notice points the person to the list.
 
 ### 7.5 How the screens use the messages
 
@@ -1463,8 +1478,8 @@ Table 23. Each phone screen reads one snapshot and sends decisions, and only the
 | --- | --- | --- | --- |
 | Queue | `queue` | `decision` with `approve` on a right swipe and `delete` on a left swipe | Filter chips: All, New (`draftKind` new), Rewrite (`rewrite`), Conflict (`contradiction`). The badge counts `drafts` plus `omitted`. A `desktopOnly` draft does not offer swipe actions and reads "Approve this one on your PC" |
 | Rule detail with edit | One `draft` from `queue`; `evidence` while the PC is online | `evidence-request`; `decision` with `approve`, `saveEdit`, `reject` or `delete` | The line "Drafted on your PC" sits under the rule, and the screen does not show a model name or a Claude label. The Agents row names the coding agents of `agents`, "Claude Code" and "Codex", because the rule reaches their files. While the PC is offline, the rationale and the words areas read "Appears while your PC is online". A `desktopOnly` draft shows "Approve this one on your PC" in place of the buttons |
-| Library | `library` | `decision` with `edit`, `turnOff`, `turnOn` or `delete` | A row shows `violationsSinceApproval` and `lastSeenAt`. The rule screen offers Edit, Turn Off or Turn On, and Delete. Edit sends the changed text as `edit`. The phone does not ask for the words behind violations |
-| Learning dashboard | `counts` | No messages | The four numbers and the two weekly charts |
+| Library | `library` | `decision` with `edit`, `turnOff`, `turnOn` or `delete` | A row shows `violationsSinceApproval` and `lastSeenAt`. A counter that is null reads "Not measured yet". The rule screen offers Edit, Turn Off or Turn On, and Delete. A `desktopOnly` rule offers none of them and reads "Change this one on your PC". Edit sends the changed text as `edit`. The phone does not ask for the words behind violations |
+| Learning dashboard | `counts` | No messages | The four numbers and the two weekly charts. A number that is null reads "Not measured yet" |
 | Pair and Settings | `pairings.json`, `welcome` and `presence` | Pairing; `unpair` | "Paired with My PC, last seen 2 min ago" reads `pcName` and `pcLastSeenAt`. The diagnostics block shows the build number, the pairing state, the relay origin, and the last close code, error or `dropped` reason. Notification settings arrive with phase 7 push, so version 1 shows none |
 
 ## 8. Demo mode and the demo room
