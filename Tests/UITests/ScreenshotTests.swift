@@ -135,6 +135,9 @@ final class ScreenshotTests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments = ["-LastideScreen", screen ?? name, "-LastideColorScheme", scheme]
             if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", Self.accessibility3] }
+            // A launch while the last copy is still closing fails with "Failed to terminate" or "does not have a
+            // process ID". So each launch starts only once no copy of the app runs.
+            try stopIfRunning(app)
             app.launch()
             let element = app.descendants(matching: .any).matching(predicate).firstMatch
             XCTAssertTrue(element.waitForExistence(timeout: 30), "\(name) in \(scheme) did not appear")
@@ -151,7 +154,15 @@ final class ScreenshotTests: XCTestCase {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try png.write(to: directory.appendingPathComponent("\(name)-\(scheme).png"))
             }
+            try stopIfRunning(app)
+        }
+    }
+
+    /// Closes the app when it runs, and waits until the simulator reports it stopped.
+    private func stopIfRunning(_ app: XCUIApplication) throws {
+        if app.state != .notRunning && app.state != .unknown {
             app.terminate()
         }
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 20), "the app did not stop within 20 s")
     }
 }
