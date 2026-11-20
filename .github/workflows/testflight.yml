@@ -25,6 +25,9 @@ jobs:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      # The test relay the build accepts beside relay.example. A secret keeps its host out of the public code
+      # and masks it in the logs.
+      LASTIDE_TEST_RELAY_ORIGIN: ${{ secrets.LASTIDE_TEST_RELAY_ORIGIN }}
     steps:
       - name: Stop unless the Build workflow passed on this commit
         env:
@@ -40,7 +43,7 @@ jobs:
           echo "The Build workflow passed on $GITHUB_SHA in $passed runs."
       - name: Stop when a secret is missing
         run: |
-          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 LASTIDE_TEST_RELAY_ORIGIN; do
             if [ -z "${!name}" ]; then
               echo "::error::Repository secret $name is not set"
               exit 1
@@ -69,6 +72,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath build/Lastide.xcarchive \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            LASTIDE_RELAY_ORIGINS="https://relay.example $LASTIDE_TEST_RELAY_ORIGIN" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" | xcbeautify
       # The export takes the entitlements from the signatures of the archive, and the unsigned archive has none.

@@ -1,10 +1,11 @@
 # XcodeGen spec. `xcodegen generate` writes Lastide.xcodeproj from this file on the build Mac.
-# `scripts/rename-brand/rename.mjs` in the workspace repository owns the bundle prefix `invalid.lastide`.
+# `scripts/rename-brand/rename.mjs` in the workspace repository owns the bundle prefix `dev.lastide`.
 name: Lastide
 options:
   deploymentTarget:
     iOS: "27.0"
   createIntermediateGroups: true
+  bundleIdPrefix: dev.lastide
 packages:
   LastideKit:
     path: Packages/LastideKit
@@ -17,7 +18,8 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     GENERATE_INFOPLIST_FILE: "NO"
     # The relay origins the app accepts in a QR code (protocol section 3.2): one line, origins
-    # separated by single spaces. A Debug build adds its test origin in the git-ignored Local.xcconfig.
+    # separated by single spaces. A Debug build adds its test origin in the git-ignored Local.xcconfig,
+    # and the TestFlight workflow adds it from the secret LASTIDE_TEST_RELAY_ORIGIN.
     LASTIDE_RELAY_ORIGINS: "https://relay.example"
 targets:
   Lastide:
@@ -44,7 +46,7 @@ targets:
           - UIInterfaceOrientationPortrait
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: invalid.lastide.app
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app
         PRODUCT_NAME: Lastide
         CODE_SIGN_ENTITLEMENTS: App/Lastide.entitlements
   LastideTests:
@@ -61,7 +63,7 @@ targets:
       - package: LastideKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: invalid.lastide.app.tests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.tests
         GENERATE_INFOPLIST_FILE: "YES"
   LastideUITests:
     type: bundle.ui-testing
@@ -72,7 +74,7 @@ targets:
       - target: Lastide
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: invalid.lastide.app.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.uitests
         GENERATE_INFOPLIST_FILE: "YES"
         TEST_TARGET_NAME: Lastide
 schemes:
