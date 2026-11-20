@@ -39,6 +39,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LASTIDE_RELAY_ORIGINS: $(LASTIDE_RELAY_ORIGINS)
         NSCameraUsageDescription: Lastide uses the camera to scan the pairing code that your PC shows.
+        # Export compliance (owner decision, 2026-11-20): the app uses standard encryption only through Apple's
+        # CryptoKit, so it is exempt, and App Store Connect stops asking at each upload.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
