@@ -82,27 +82,59 @@ public struct ScopeOption: Hashable, Sendable, Codable, Validatable {
     }
 }
 
-/// One correction behind a draft, without its words.
+/// One correction behind a draft, without its words. A review comment has no agent: `agent` is null and
+/// `commentLabel` names the comment, such as "C7" (protocol 7.3, schema revision 2).
 public struct EvidenceItem: Hashable, Sendable, Codable, Validatable {
     public var id: String
     public var at: Int
     public var projectName: String
-    public var agent: Agent
+    /// Null for a review comment.
+    public var agent: Agent?
     public var signal: Signal
+    /// The review comment's label, present when `agent` is null.
+    public var commentLabel: String?
 
     /// Builds an evidence item.
-    init(id: String, at: Int, projectName: String, agent: Agent, signal: Signal) {
+    init(id: String, at: Int, projectName: String, agent: Agent?, signal: Signal, commentLabel: String? = nil) {
         self.id = id
         self.at = at
         self.projectName = projectName
         self.agent = agent
         self.signal = signal
+        self.commentLabel = commentLabel
+    }
+
+    enum CodingKeys: String, CodingKey { case id, at, projectName, agent, signal, commentLabel }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        at = try c.decode(Int.self, forKey: .at)
+        projectName = try c.decode(String.self, forKey: .projectName)
+        agent = try c.nullable(Agent.self, forKey: .agent)
+        signal = try c.decode(Signal.self, forKey: .signal)
+        commentLabel = try c.decodeIfPresent(String.self, forKey: .commentLabel)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(at, forKey: .at)
+        try c.encode(projectName, forKey: .projectName)
+        try c.encodeNullable(agent, forKey: .agent)
+        try c.encode(signal, forKey: .signal)
+        try c.encodeIfPresent(commentLabel, forKey: .commentLabel)
     }
 
     func validate(_ path: String) throws {
         try Check.shortID(id, path + ".id")
         try Check.integer(at, path + ".at")
         try Check.text(projectName, path + ".projectName", minimum: 1, maximum: 128)
+        if let commentLabel { try Check.commentLabel(commentLabel, path + ".commentLabel") }
+        if agent == nil {
+            try Check.that(commentLabel != nil, path + ".commentLabel", "present when agent is null")
+            try Check.that(signal == .reviewComment, path + ".signal", "reviewComment when agent is null")
+        }
     }
 }
 

@@ -92,6 +92,12 @@ enum Words {
         agents.map { $0 == .claudeCode ? "Claude Code" : "Codex" }.joined(separator: ", ")
     }
 
+    /// The agent of an evidence row, or "Review comment C7" where a review comment has no agent (protocol 7.3).
+    static func source(_ item: EvidenceItem) -> String {
+        if let agent = item.agent { return agents([agent]) }
+        return ReviewText.reviewComment(item.commentLabel ?? "")
+    }
+
     static func signal(_ signal: Signal) -> String {
         switch signal {
         case .typedTurn: return "Typed message"

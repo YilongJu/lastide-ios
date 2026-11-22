@@ -7,8 +7,9 @@ public enum LastideProtocol {
     public static let version: UInt8 = 1
     /// The WebSocket subprotocol every socket offers.
     public static let webSocketSubprotocol = "lastide-relay.1"
-    /// The sync schema revision this package speaks.
-    public static let schemaRevision = 1
+    /// The sync schema revision this package speaks. Revision 2 adds the drafting run counts, the waiting
+    /// import principles and the review comment evidence item (protocol 7.3).
+    public static let schemaRevision = 2
     /// DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20Poly1305.
     public static let ciphersuite = HPKE.Ciphersuite.Curve25519_SHA256_ChachaPoly
     /// Size of the clear envelope header.

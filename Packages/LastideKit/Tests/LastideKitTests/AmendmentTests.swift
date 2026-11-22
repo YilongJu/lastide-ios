@@ -3,7 +3,8 @@ import Foundation
 import XCTest
 
 /// The protocol amendments the phone sees: counters that the PC sends as null (section 7.3), the `desktopOnly` sentence of
-/// a rule (Table 22), and the text rule of section 7.4, check 7.
+/// a rule (Table 22), the text rule of section 7.4, check 7, and schema revision 2: the drafting run counts, the waiting
+/// import principles and the review comment evidence item.
 final class AmendmentTests: XCTestCase {
     private let draft1 = Target(targetType: .draft, id: "d-0001")
 
@@ -37,6 +38,49 @@ final class AmendmentTests: XCTestCase {
         XCTAssertThrowsError(try decode(countsJSON(nullApproved)), "rulesApproved is always measured")
         let nullToday = nullCounts.replacingOccurrences(of: #""draftsToday":1"#, with: #""draftsToday":null"#)
         XCTAssertThrowsError(try decode(countsJSON(nullToday)), "draftsToday is always measured")
+    }
+
+    func testRevisionTwoCountsCarryTheDraftingRunsAndTheWaitingImportAndRevisionOneCountsLeaveThemOut() throws {
+        let two = #""repeatCorrectionsThisWeek":null,"repeatCorrectionsLastWeek":null,"rulesApproved":2,"violationsThisWeek":null,"draftsToday":1,"draftCap":null,"draftingRunsToday":3,"draftingRunCap":20,"importRulesWaiting":12"#
+        guard case .counts(let counts) = try decode(countsJSON(two)) else { return XCTFail("not a counts message") }
+        XCTAssertEqual(counts.draftingRunsToday, 3)
+        XCTAssertEqual(counts.draftingRunCap, 20)
+        XCTAssertEqual(counts.importRulesWaiting, 12)
+        XCTAssertNil(counts.draftCap as Int?, "drafts have no cap of their own; the runs have one")
+        guard case .counts(let one) = try decode(countsJSON(nullCounts)) else { return XCTFail("not a counts message") }
+        XCTAssertNil(one.draftingRunsToday)
+        XCTAssertNil(one.draftingRunCap)
+        XCTAssertNil(one.importRulesWaiting)
+        let encoded = String(decoding: try JSONEncoder().encode(one), as: UTF8.self)
+        XCTAssertFalse(encoded.contains("draftingRunsToday"), "a revision 1 message stays as it came")
+        let negative = two.replacingOccurrences(of: #""importRulesWaiting":12"#, with: #""importRulesWaiting":-1"#)
+        XCTAssertThrowsError(try decode(countsJSON(negative)))
+        XCTAssertEqual(LastideProtocol.schemaRevision, 2)
+        XCTAssertEqual(ReviewText.importWaiting(12), "An import of 12 rules waits on your PC.")
+        XCTAssertEqual(ReviewText.importWaiting(1), "An import of 1 rule waits on your PC.")
+        XCTAssertEqual(ReviewText.draftingRuns(3, cap: 20), "3 of 20")
+    }
+
+    func testAReviewCommentEvidenceItemHasNoAgentAndCarriesItsLabel() throws {
+        let comment = #"{"id":"2","at":1794319200000,"projectName":"northwind-reports","agent":null,"signal":"reviewComment","commentLabel":"C7"}"#
+        let draft = draftJSON().replacingOccurrences(of: #""signal":"typedTurn"}]"#, with: #""signal":"typedTurn"},"# + comment + "]")
+        guard case .queue(let queue) = try decode(queueJSON(storeVersion: 42, drafts: [draft])) else { return XCTFail("not a queue message") }
+        let item = queue.drafts[0].evidence[1]
+        XCTAssertNil(item.agent)
+        XCTAssertEqual(item.commentLabel, "C7")
+        XCTAssertEqual(ReviewText.reviewComment("C7"), "Review comment C7")
+        XCTAssertEqual(queue.drafts[0].evidence[0].agent, .claudeCode)
+        let encoded = String(decoding: try JSONEncoder().encode(item), as: UTF8.self)
+        XCTAssertTrue(encoded.contains(#""agent":null"#) && encoded.contains(#""commentLabel":"C7""#))
+        for (name, bad) in [
+            ("no label", comment.replacingOccurrences(of: #","commentLabel":"C7""#, with: "")),
+            ("another signal", comment.replacingOccurrences(of: #""signal":"reviewComment""#, with: #""signal":"typedTurn""#)),
+            ("a label of another shape", comment.replacingOccurrences(of: #""C7""#, with: #""7""#)),
+            ("a missing agent", comment.replacingOccurrences(of: #""agent":null,"#, with: "")),
+        ] {
+            let broken = draftJSON().replacingOccurrences(of: #""signal":"typedTurn"}]"#, with: #""signal":"typedTurn"},"# + bad + "]")
+            XCTAssertThrowsError(try decode(queueJSON(storeVersion: 42, drafts: [broken])), name)
+        }
     }
 
     func testRuleViolationCountersTakeNull() throws {

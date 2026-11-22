@@ -139,14 +139,20 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
     /// Null while the PC does not measure violations yet.
     public var violationsThisWeek: Int?
     public var draftsToday: Int
-    /// Null while the PC does not cap its drafts per day yet.
+    /// Null: drafts have no cap of their own. The drafting runs have one (`draftingRunCap`).
     public var draftCap: Int?
     /// Oldest week first.
     public var weeks: [WeekCount]
+    /// The drafting runs of the PC's local day, from schema revision 2. Absent from a revision 1 PC.
+    public var draftingRunsToday: Int?
+    /// The PC's cap of drafting runs a day, from schema revision 2. Absent from a revision 1 PC.
+    public var draftingRunCap: Int?
+    /// The principles in import drafts that wait on the PC, from schema revision 2. Absent from a revision 1 PC.
+    public var importRulesWaiting: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, sentAt, schema, storeVersion, repeatCorrectionsThisWeek, repeatCorrectionsLastWeek, rulesApproved
-        case violationsThisWeek, draftsToday, draftCap, weeks
+        case violationsThisWeek, draftsToday, draftCap, weeks, draftingRunsToday, draftingRunCap, importRulesWaiting
     }
 
     public init(from decoder: Decoder) throws {
@@ -162,6 +168,9 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
         draftsToday = try c.decode(Int.self, forKey: .draftsToday)
         draftCap = try c.nullable(Int.self, forKey: .draftCap)
         weeks = try c.decode([WeekCount].self, forKey: .weeks)
+        draftingRunsToday = try c.decodeIfPresent(Int.self, forKey: .draftingRunsToday)
+        draftingRunCap = try c.decodeIfPresent(Int.self, forKey: .draftingRunCap)
+        importRulesWaiting = try c.decodeIfPresent(Int.self, forKey: .importRulesWaiting)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -177,6 +186,9 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
         try c.encode(draftsToday, forKey: .draftsToday)
         try c.encodeNullable(draftCap, forKey: .draftCap)
         try c.encode(weeks, forKey: .weeks)
+        try c.encodeIfPresent(draftingRunsToday, forKey: .draftingRunsToday)
+        try c.encodeIfPresent(draftingRunCap, forKey: .draftingRunCap)
+        try c.encodeIfPresent(importRulesWaiting, forKey: .importRulesWaiting)
     }
 
     func validate(_ path: String) throws {
@@ -186,7 +198,9 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
         }
         for (value, name) in [(repeatCorrectionsThisWeek, "repeatCorrectionsThisWeek"),
                               (repeatCorrectionsLastWeek, "repeatCorrectionsLastWeek"),
-                              (violationsThisWeek, "violationsThisWeek"), (draftCap, "draftCap")] {
+                              (violationsThisWeek, "violationsThisWeek"), (draftCap, "draftCap"),
+                              (draftingRunsToday, "draftingRunsToday"), (draftingRunCap, "draftingRunCap"),
+                              (importRulesWaiting, "importRulesWaiting")] {
             try Check.optionalInteger(value, path + "." + name)
         }
         try Check.count(weeks, path + ".weeks", minimum: 0, maximum: 12)

@@ -29,7 +29,8 @@ Terms:
 | `everyProject` | `kindOfWork` is null, no project | `Scope.validate` |
 | `scopeOption.id` | `^[A-Za-z0-9_-]{1,16}$` | `Check.shortID` |
 | `scopeOptions` | 1 to 8 options | `validateOptions` |
-| `evidenceItem` | `id` matches `^[A-Za-z0-9_-]{1,16}$`; `at` is a time; `projectName`; `agent`; `signal` | `EvidenceItem.validate` |
+| `evidenceItem` | `id` matches `^[A-Za-z0-9_-]{1,16}$`; `at` is a time; `projectName`; `agent`, nullable; `signal`; `commentLabel`, when present, matches `^C[0-9]{1,9}$` | `EvidenceItem` decoding, `EvidenceItem.validate`, `Check.commentLabel` |
+| `evidenceItem`, `agent` null | A review comment: `commentLabel` is present and `signal` is `reviewComment` | `EvidenceItem.validate` |
 | `draft.text`, `rule.text` | 1 to 4000 code points | `Check.text` |
 | `draft.evidence` | At most 20 items | `Draft.validate` |
 | `draft.relatedRuleIds` | At most 20 item ids | `Draft.validate` |
@@ -54,6 +55,7 @@ Terms:
 | `pair-refuse` | `reason` is one of the five listed values | `PairRefuseReason` |
 | `queue`, `library` | `schema`, `storeVersion`, `omitted`; every draft or rule | `QueueSnapshot.validate`, `LibrarySnapshot.validate` |
 | `counts` | Every number is a count; `repeatCorrectionsThisWeek`, `repeatCorrectionsLastWeek`, `violationsThisWeek` and `draftCap` are nullable (`countOrNull`); `weeks` holds at most 12 items | `Counts` decoding, `Counts.validate` |
+| `counts`, revision 2 | `draftingRunsToday`, `draftingRunCap` and `importRulesWaiting` are counts when present, and absent from a revision 1 PC | `Counts` decoding, `Counts.validate` |
 | `counts.weeks[]` | `weekStart` matches `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | `Check.weekStart` |
 | `evidence` | `requestId` is b64u16; `draftId` is an item id | `Evidence.validate` |
 | `evidence.rationale` | Nullable; at most 1000 code points | `Evidence` decoding and `validate` |

@@ -35,10 +35,17 @@ struct LearningView: View {
                             Text("Rules approved")
                         }
                         LabeledContent {
-                            Text(counts.draftCap.map { "\(counts.draftsToday) of \($0)" } ?? "\(counts.draftsToday)").monospacedDigit()
+                            Text("\(counts.draftsToday)").monospacedDigit()
                         } label: {
                             Text("Drafts today")
-                            if counts.draftCap == nil { Text("Daily limit: " + ReviewText.notMeasured) }
+                        }
+                        if let runs = counts.draftingRunsToday, let cap = counts.draftingRunCap {
+                            LabeledContent {
+                                Text(ReviewText.draftingRuns(runs, cap: cap)).monospacedDigit()
+                            } label: {
+                                Text("Drafting runs today")
+                            }
+                            .accessibilityIdentifier("draftingRuns")
                         }
                     }
                     if counts.weeks.isEmpty {

@@ -28,7 +28,7 @@ The fixed values of protocol version 1 (Table 2).
 ```swift
 static let version: UInt8                       // 1
 static let webSocketSubprotocol: String         // "lastide-relay.1"
-static let schemaRevision: Int                  // 1
+static let schemaRevision: Int                  // 2
 static let ciphersuite: HPKE.Ciphersuite        // Curve25519_SHA256_ChachaPoly
 static let headerSize: Int                      // 76
 static let tagSize: Int                         // 16
@@ -408,7 +408,7 @@ Each message type is `Hashable` and `Codable`, and holds `id: String` and `sentA
 | `PairRefuse` | `pairingId`, `phoneId`, `reason: PairRefuseReason` |
 | `QueueSnapshot` | `schema`, `storeVersion`, `omitted`, `drafts: [Draft]` |
 | `LibrarySnapshot` | `schema`, `storeVersion`, `omitted`, `rules: [Rule]` |
-| `Counts` | `schema`, `storeVersion`, `repeatCorrectionsThisWeek: Int?`, `repeatCorrectionsLastWeek: Int?`, `rulesApproved`, `violationsThisWeek: Int?`, `draftsToday`, `draftCap: Int?`, `weeks: [WeekCount]`. Each `Int?` is null while the PC does not measure that count yet; show `ReviewText.notMeasured` |
+| `Counts` | `schema`, `storeVersion`, `repeatCorrectionsThisWeek: Int?`, `repeatCorrectionsLastWeek: Int?`, `rulesApproved`, `violationsThisWeek: Int?`, `draftsToday`, `draftCap: Int?`, `weeks: [WeekCount]`, `draftingRunsToday: Int?`, `draftingRunCap: Int?`, `importRulesWaiting: Int?`. Each of the first four `Int?` is null while the PC does not measure that count yet; show `ReviewText.notMeasured`. `draftCap` stays null, because drafts have no cap of their own. The last three are absent from a PC of schema revision 1 |
 | `Evidence` | `requestId`, `draftId`, `changedAtStoreVersion`, `rationale: String?`, `items: [EvidenceWords]` |
 | `Acknowledgement` | `decisionId`, `result: AcknowledgementResult`, `appliedAt: Int?`, `reason: RefusalReason?`, `storeVersion`, `current: CurrentItem?` |
 | `Decision` | `decisionId`, `target: Target`, `storeVersion`, `action: DecisionAction`, `text: String?`, `scopeOptionId: String?`, `decidedAt` |
@@ -431,7 +431,7 @@ Unpair.init(id: String, sentAt: Int)
 | `Rule: Identifiable` | A rule the person approved | `id`, `changedAtStoreVersion`, `text`, `scope`, `scopeOptions`, `group`, `strength`, `agents`, `source`, `state`, `approvedAt: Int?`, `editedAt: Int?`, `editedOn: EditedOn?`, `correctionsBeforeApproval`, `violationsSinceApproval: Int?`, `violationsLast30Days: Int?`, `lastSeenAt: Int?`, `folderGone`, `desktopOnly`. The two violation counters are null while the PC does not measure them yet |
 | `Scope` | Where an item applies | `kind: ScopeKind` (JSON `scope`), `kindOfWork: String?`, `projectNames: [String]` |
 | `ScopeOption` | One scope the person may pick | `id`, `scope: Scope` |
-| `EvidenceItem` | One correction behind a draft, without words | `id`, `at`, `projectName`, `agent`, `signal` |
+| `EvidenceItem` | One correction behind a draft, without words | `id`, `at`, `projectName`, `agent: Agent?`, `signal`, `commentLabel: String?`. A review comment has `agent` null and its label, such as "C7" |
 | `EvidenceWords` | The words of one evidence item | `evidenceId`, `state: EvidenceState`, `words: String?` |
 | `Target` | The item a decision acts on | `targetType: TargetType`, `id`; `init(targetType: TargetType, id: String)` |
 | `CurrentItem` | The item an acknowledgement carries | `case draft(Draft)`, `case rule(Rule)`; `var target: Target` |

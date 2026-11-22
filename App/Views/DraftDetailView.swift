@@ -71,7 +71,7 @@ struct DraftDetailView: View {
             Section("Evidence") {
                 ForEach(draft.evidence, id: \.id) { item in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(Words.signal(item.signal))
+                        Text(Words.signal(item.signal) + " · " + Words.source(item))
                         Text(Words.date(item.at) + " · " + item.projectName).font(.footnote).foregroundStyle(.secondary)
                         if let words = evidenceWords(for: item.id) {
                             Text(words).font(.callout).italic()

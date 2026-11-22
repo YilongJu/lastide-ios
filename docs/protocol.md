@@ -82,7 +82,7 @@ Each term keeps one meaning in this document.
 | Acknowledgement | The PC's answer to one decision: applied or refused |
 | Evidence words | The redacted words of the corrections behind a draft. They reach the phone only while both devices are online |
 | Learning counts | The numbers and weekly series of the Learning screen |
-| Schema revision | The version of the sync message JSON. This document defines revision 1 |
+| Schema revision | The version of the sync message JSON. This document defines revision 2. Every revision 1 message is also a revision 2 message |
 | HPKE | Hybrid Public Key Encryption, [RFC 9180][rfc9180] |
 | AEAD | Authenticated encryption with associated data. The cipher encrypts the plaintext and authenticates both the plaintext and the associated data |
 | Base mode | HPKE mode `0x00`. The recipient learns nothing about who sealed the message |
@@ -131,7 +131,7 @@ Table 2. Version 1 fixes every size and limit, so the three programs agree witho
 | Phones per PC | 8 |
 | Rooms per account | 5 |
 | Room life without a PC connection | 90 days |
-| Sync schema revision | 1 |
+| Sync schema revision | 2 |
 
 ## 1. Threat model
 
@@ -157,7 +157,7 @@ Table 3. A party sees metadata at most unless it holds a private key. The check 
 | A network attacker between a device and the relay | See that a device talks to the relay, when, and how much. Block traffic | Read hello frames or envelopes, because TLS covers them. With a trusted root certificate on the device, the attacker gets the relay's view above and nothing more |
 | Someone who photographs the QR code | Within 120 s, open the pairing socket before the person's phone does. That stops the person's pairing, and the person starts again with a new code. Seal messages to the PC key at any time | Complete a pairing. The PC answers one pair request per code. The person's phone shows a code only after the PC answers that phone's own request. A code that the person types matches the attacker's request at most 3 times in 1,000,000 per QR code. Use the ticket after 120 s, or after a phone used it. Join the room, because they lack a token. Get a sealed message accepted. The PC opens only pair requests that answer its open QR code, and Auth-mode messages from paired phones |
 | Someone who finds a lost phone, without its passcode | Read notification text on the lock screen in phase 7, unless the person hides previews in iOS settings | Read the cached data, because its files open only while the phone is unlocked. Read the keys while the phone has not been unlocked since its last restart. After the first unlock, the system can read the keys until the next restart. The phase 7 extension needs that to decrypt on a locked phone. Approve or delete from the lock screen, because both actions require an unlocked device |
-| Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a rule in a project's agent files. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
+| Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a project file that git may track: a file from before the PC kept its rule files out of git, or the project's own `CLAUDE.md` or `AGENTS.md`. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
 | Anyone who holds a revoked phone's keys and token | Read what the phone stored before the revoke. Open the envelopes it recorded before the revoke, except evidence words | Connect, because the relay deleted its token hash. The phone bridge repeats `remove-phone` until the relay confirms it. Receive new messages, because the PC stopped sealing to its key and the relay deleted its mailbox. Get a frame accepted, because the PC deleted its phone key. Pair again without a new QR code on the PC |
 | Anyone who knows the pairing id, such as a QR code viewer or a revoked phone | Open sockets to the room that wait for `hello`. Each such socket closes the oldest waiting socket when the room's limit is reached | Join the room, because joining needs a token or an open ticket. Hold a waiting socket for more than 10 s. Hold more than 2 waiting sockets from one client address |
 | APNs (phase 7) | See the device token, the time and the size of each push | Read the push body, because the PC seals it to the phone key |
@@ -956,6 +956,7 @@ The relay code logs close codes, frame counts and errors. The relay never logs a
 - Enum fields hold only the values listed here. Each device sends only the types and enum values defined at the lower of its own schema revision and the peer's. The PC learns the phone's revision from `pair-request` and `sync`. The phone learns the PC's revision from `pair-accept` and from `schema` in each snapshot, and stores it as `pcSchema`.
 - The rule learning service raises the store version when the desktop app starts with a new schema revision. So two `queue` or `library` snapshots with equal store versions are equal.
 - The phone never shows full paths. Every project appears by its folder name alone, as `projectName` or `projectNames`.
+- Revision 2 adds three counts to `counts`: `draftingRunsToday`, `draftingRunCap` and `importRulesWaiting`. It also lets an evidence item of a review comment carry `agent: null` and `commentLabel`. The PC sends these only to a phone of revision 2 or later. A phone of revision 1 gets `counts` without the three fields and a draft without its review comment items.
 - Ids of drafts and rules come from the rule store, and the phone treats them as opaque strings. Evidence ids are opaque strings that the PC assigns per change of a draft. They never contain a session id or a path.
 
 ### 7.2 Message list
@@ -986,6 +987,8 @@ A `sync` asks for fresh snapshots. The PC skips `queue` when its current store v
 
 A snapshot over 240,000 bytes of plaintext drops items from the end of its order. `omitted` counts the dropped items. `queue` lists drafts newest first. `library` lists rules by approval time, newest first. The phone shows "N more on your PC" when `omitted` is above 0.
 
+An import draft never travels. One approval of it writes one rule per principle, and the desktop shows one card per section of the imported file. `counts.importRulesWaiting` counts the principles of the import drafts that wait on the PC.
+
 Evidence words. The phone sends `evidence-request` with the draft id, the store version of the snapshot it shows, and `replyKey`. `replyKey` is the public part of a fresh reply key, 32 bytes in base64url. The phone keeps the private part in memory only. The phone deletes it when the detail screen closes or the app leaves the screen. The PC seals `evidence` in Auth mode to `replyKey`, with the PC key as sender and `INFO_MESSAGE`. The envelope carries REPLY_KEY and slot 0, and the PC forgets `replyKey` after it seals.
 
 Each `items[].evidenceId` equals an `id` in the draft's `evidence` list at the draft's current `changedAtStoreVersion`. When the draft changed after the request's `storeVersion`, the PC first sends a fresh `queue`, then `evidence` for the current change. The phone shows the words only when `changedAtStoreVersion` in `evidence` equals that of the draft on the screen. When the draft is gone, the PC sends a fresh `queue` and no `evidence`, and the phone closes the detail screen.
@@ -999,8 +1002,8 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://relay.example/schemas/lastide-sync-1.json",
-  "title": "Lastide sync messages, schema revision 1",
+  "$id": "https://relay.example/schemas/lastide-sync-2.json",
+  "title": "Lastide sync messages, schema revision 2",
   "oneOf": [
     { "$ref": "#/$defs/pairRequest" },
     { "$ref": "#/$defs/pairReceived" },
@@ -1082,8 +1085,14 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,16}$" },
         "at": { "$ref": "#/$defs/time" },
         "projectName": { "$ref": "#/$defs/projectName" },
-        "agent": { "$ref": "#/$defs/agent" },
-        "signal": { "$ref": "#/$defs/signal" }
+        "agent": { "enum": ["claudeCode", "codex", null] },
+        "signal": { "$ref": "#/$defs/signal" },
+        "commentLabel": { "type": "string", "pattern": "^C[0-9]{1,9}$" }
+      },
+      "if": { "type": "object", "required": ["agent"], "properties": { "agent": { "const": null } } },
+      "then": {
+        "type": "object", "required": ["commentLabel"],
+        "properties": { "commentLabel": { "type": "string" }, "signal": { "const": "reviewComment" } }
       }
     },
     "draft": {
@@ -1252,6 +1261,9 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
         "violationsThisWeek": { "$ref": "#/$defs/countOrNull" },
         "draftsToday": { "$ref": "#/$defs/count" },
         "draftCap": { "$ref": "#/$defs/countOrNull" },
+        "draftingRunsToday": { "$ref": "#/$defs/count" },
+        "draftingRunCap": { "$ref": "#/$defs/count" },
+        "importRulesWaiting": { "$ref": "#/$defs/count" },
         "weeks": {
           "type": "array", "maxItems": 12,
           "items": {
@@ -1409,8 +1421,10 @@ Field notes that the schema cannot state:
 - `draft.scope` equals one of the draft's `scopeOptions` without its `id`. The PC offers "This project" once per project, "Kind of work" when the draft names one, and "All projects".
 - A scope option `id` stays valid while its item's `changedAtStoreVersion` stays the same. A decision that fails the store version check is refused before its option is read.
 - `evidenceCount`, `sessionCount` and `projectCount` drive the card line "3 corrections, 2 projects". The `evidence` list may hold fewer items than `evidenceCount`.
-- `rule.text` and `draft.text` may hold line breaks only for imported sections. Every text the phone sends passes the text rule of section 7.4, check 7.
-- `null` in `repeatCorrectionsThisWeek`, `repeatCorrectionsLastWeek`, `violationsThisWeek`, `draftCap`, `violationsSinceApproval` or `violationsLast30Days` means that the PC does not measure that count yet. A zero would state a false count. The phone shows "Not measured yet" in its place.
+- `rule.text` and `draft.text` hold no line break. An imported rule is one principle on one line, and an import draft never travels. Every text the phone sends passes the text rule of section 7.4, check 7.
+- `null` in `repeatCorrectionsThisWeek`, `repeatCorrectionsLastWeek`, `violationsThisWeek`, `violationsSinceApproval` or `violationsLast30Days` means that the PC does not measure that count yet. A zero would state a false count. The phone shows "Not measured yet" in its place.
+- `draftCap` stays `null`, because drafts have no cap of their own. `draftsToday` counts the drafts made since the PC's local midnight. `draftingRunsToday` counts the drafting runs since then, and `draftingRunCap` is the PC's cap of runs a day. One drafting run writes several drafts.
+- An evidence item whose `agent` is `null` is a review comment on a page the person reviewed. It carries the comment's label, such as `C7`, and its `signal` is `reviewComment`. The phone shows "Review comment C7" where an agent's name stands.
 - `counts.weeks` runs oldest first. `weekStart` is the Monday of each week in the PC's local calendar.
 - `evidence.items[].words` holds at most 300 code points. The PC redacts email addresses and phone numbers and cuts the text before it sends.
 - `deviceName` is `UIDevice.current.name`, which reads "iPhone" from iOS 16 on without a special entitlement. `model` is the hardware model identifier from `utsname.machine`, for example "iPhone17,3". The PC shows both while the person names the phone.
@@ -1438,7 +1452,7 @@ The phone bridge passes each decision to the rule learning service, which applie
 1. A known `decisionId` gets its stored result again. The PC rebuilds `current` from the item as it stands now, and the acknowledgement carries the current store version.
 2. The decision envelope's `seq` lies more than 8 days (691,200,000 ms) below the PC's clock: `expired`. The 8 days are the 7-day mailbox life plus 1 day for clock differences. A phone's resend after 6 days carries a fresh `seq`.
 3. The target does not exist: `gone`.
-4. The target is a hook template or a deny rule (`desktopOnly` true): `desktopOnly`. The same holds when the decision would write a file under a project folder. It also holds when the target rule names a project folder that the PC has not located yet. A project's agent files are often tracked by git, so only the desktop changes them. A `saveEdit`, `reject` or `delete` of a draft writes no agent file, so this check lets it through.
+4. The target is a hook template or a deny rule (`desktopOnly` true): `desktopOnly`. The same holds when the decision would write a project file that git may track. A phone may write a project file that the PC created after it added the file to the repository's `info/exclude`. Every other project file is desktop only: a file from before, and the project's own `CLAUDE.md` or `AGENTS.md`. The check also holds when the target rule names a project folder that the PC has not located yet. An import draft is desktop only too. A `saveEdit`, `reject` or `delete` of a draft writes no agent file, so this check lets it through.
 5. The target's `changedAtStoreVersion` is above the decision's `storeVersion`: `staleVersion`, with the current item in `current`.
 6. The action does not fit the target type, or edits an imported section: `invalidAction`.
 7. The text breaks the text rule below: `invalidText`.
@@ -1476,10 +1490,10 @@ Table 23. Each phone screen reads one snapshot and sends decisions, and only the
 
 | Screen | Reads | Sends | Notes |
 | --- | --- | --- | --- |
-| Queue | `queue` | `decision` with `approve` on a right swipe and `delete` on a left swipe | Filter chips: All, New (`draftKind` new), Rewrite (`rewrite`), Conflict (`contradiction`). The badge counts `drafts` plus `omitted`. A `desktopOnly` draft does not offer swipe actions and reads "Approve this one on your PC" |
-| Rule detail with edit | One `draft` from `queue`; `evidence` while the PC is online | `evidence-request`; `decision` with `approve`, `saveEdit`, `reject` or `delete` | The line "Drafted on your PC" sits under the rule, and the screen does not show a model name or a Claude label. The Agents row names the coding agents of `agents`, "Claude Code" and "Codex", because the rule reaches their files. While the PC is offline, the rationale and the words areas read "Appears while your PC is online". A `desktopOnly` draft shows "Approve this one on your PC" in place of the buttons |
+| Queue | `queue`; `counts.importRulesWaiting` | `decision` with `approve` on a right swipe and `delete` on a left swipe | Filter chips: All, New (`draftKind` new), Rewrite (`rewrite`), Conflict (`contradiction`). The badge counts `drafts` plus `omitted`. A `desktopOnly` draft does not offer swipe actions and reads "Approve this one on your PC". While `importRulesWaiting` is above 0, the screen reads "An import of {k} rules waits on your PC." |
+| Rule detail with edit | One `draft` from `queue`; `evidence` while the PC is online | `evidence-request`; `decision` with `approve`, `saveEdit`, `reject` or `delete` | The line "Drafted on your PC" sits under the rule, and the screen does not show a model name or a Claude label. The Agents row names the coding agents of `agents`, "Claude Code" and "Codex", because the rule reaches their files. Each evidence row names its agent, or "Review comment {label}" for an item whose `agent` is `null`. While the PC is offline, the rationale and the words areas read "Appears while your PC is online". A `desktopOnly` draft shows "Approve this one on your PC" in place of the buttons |
 | Library | `library` | `decision` with `edit`, `turnOff`, `turnOn` or `delete` | A row shows `violationsSinceApproval` and `lastSeenAt`. A counter that is null reads "Not measured yet". The rule screen offers Edit, Turn Off or Turn On, and Delete. A `desktopOnly` rule offers none of them and reads "Change this one on your PC". Edit sends the changed text as `edit`. The phone does not ask for the words behind violations |
-| Learning dashboard | `counts` | No messages | The four numbers and the two weekly charts. A number that is null reads "Not measured yet" |
+| Learning dashboard | `counts` | No messages | The numbers and the two weekly charts. A number that is null reads "Not measured yet". "Drafts today: {n}" shows no limit. "Drafting runs today: {r} of {cap}" reads `draftingRunsToday` and `draftingRunCap` |
 | Pair and Settings | `pairings.json`, `welcome` and `presence` | Pairing; `unpair` | "Paired with My PC, last seen 2 min ago" reads `pcName` and `pcLastSeenAt`. The diagnostics block shows the build number, the pairing state, the relay origin, and the last close code, error or `dropped` reason. Notification settings arrive with phase 7 push, so version 1 shows none |
 
 ## 8. Demo mode and the demo room

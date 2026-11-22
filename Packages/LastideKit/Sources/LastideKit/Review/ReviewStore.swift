@@ -70,6 +70,17 @@ public enum ReviewText {
     /// The line under a list whose snapshot dropped items.
     public static func moreOnPC(_ omitted: Int) -> String { "\(omitted) more on your PC" }
 
+    /// The queue's line while import drafts wait on the PC, which the phone never receives (protocol 7.5).
+    public static func importWaiting(_ rules: Int) -> String {
+        rules == 1 ? "An import of 1 rule waits on your PC." : "An import of \(rules) rules waits on your PC."
+    }
+
+    /// Where an agent's name stands on an evidence row of a review comment (protocol 7.3).
+    public static func reviewComment(_ label: String) -> String { "Review comment \(label)" }
+
+    /// The Learning screen's row of drafting runs, for example "3 of 20".
+    public static func draftingRuns(_ runs: Int, cap: Int) -> String { "\(runs) of \(cap)" }
+
     /// The card line from the draft's counters, for example "3 corrections, 2 projects".
     public static func evidenceLine(_ draft: Draft) -> String {
         let corrections = draft.evidenceCount == 1 ? "1 correction" : "\(draft.evidenceCount) corrections"

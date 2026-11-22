@@ -17,6 +17,13 @@ struct QueueView: View {
                 if model.isDemo {
                     Section { DemoBanner(text: AppText.sampleDrafts, onPair: onPair) }
                 }
+                // Import drafts stay on the PC, because one approval writes many rules (protocol 7.5).
+                if let waiting = model.store.counts?.importRulesWaiting, waiting > 0 {
+                    Section {
+                        Label(ReviewText.importWaiting(waiting), systemImage: "desktopcomputer")
+                            .accessibilityIdentifier("importWaiting")
+                    }
+                }
                 if model.store.drafts.isEmpty {
                     Section {
                         ContentUnavailableView("No drafts to review", systemImage: "tray",

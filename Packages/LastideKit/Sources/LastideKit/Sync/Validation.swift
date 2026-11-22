@@ -68,6 +68,13 @@ enum Check {
         try that(!value.unicodeScalars.contains { $0 == "\r" || $0 == "\n" }, path, "one line")
     }
 
+    /// `commentLabel`: `^C[0-9]{1,9}$`.
+    static func commentLabel(_ value: String, _ path: String) throws {
+        let bytes = Array(value.utf8)
+        let shape = bytes.count >= 2 && bytes.count <= 10 && bytes[0] == UInt8(ascii: "C") && bytes.dropFirst().allSatisfy { (48...57).contains($0) }
+        try that(shape, path, "comment label as C and 1 to 9 digits")
+    }
+
     /// `weekStart`: `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`.
     static func weekStart(_ value: String, _ path: String) throws {
         let bytes = Array(value.utf8)
