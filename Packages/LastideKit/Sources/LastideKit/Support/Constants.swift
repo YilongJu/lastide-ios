@@ -8,8 +8,8 @@ public enum LastideProtocol {
     /// The WebSocket subprotocol every socket offers.
     public static let webSocketSubprotocol = "lastide-relay.1"
     /// The sync schema revision this package speaks. Revision 2 adds the drafting run counts, the waiting
-    /// import principles and the review comment evidence item (protocol 7.3).
-    public static let schemaRevision = 2
+    /// import principles and the review comment evidence item. Revision 3 adds `count-update` (protocol 7.1).
+    public static let schemaRevision = 3
     /// DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20Poly1305.
     public static let ciphersuite = HPKE.Ciphersuite.Curve25519_SHA256_ChachaPoly
     /// Size of the clear envelope header.
@@ -22,6 +22,8 @@ public enum LastideProtocol {
     public static let largestEnvelope = 262_144
     /// Largest plaintext that fits the largest envelope.
     public static let largestPlaintext = 262_052
+    /// Largest kind 4 envelope, header included (protocol 9.3).
+    public static let largestPushEnvelope = 2_800
     /// Largest control frame in UTF-8 bytes.
     public static let largestControlFrame = 32_768
     /// `seq` stays below 2^53.

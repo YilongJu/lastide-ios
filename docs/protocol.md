@@ -1950,6 +1950,9 @@ Table 29. The vectors run in three places, and each place checks the parts its l
 | Lastide: regenerate the file byte for byte | No | No | Yes | No |
 | Lastide: run the relay's header checks of section 6.5 on each envelope | Yes | No | Yes | Yes |
 | Demo fixtures of section 8.1: validate against section 7.3 | Yes | No | Yes | No |
+| Push: open `notice` and `count-update` with the phone key, the PC public key and `INFO_PUSH`, through the phone's opener | Yes | Yes | Yes | No |
+| Push: flip one header bit of the notice, and the open must refuse | Yes | No | Yes | No |
+| Push: rebuild `clientData` and `clientDataHash` of the attest entry | Yes | No | Yes | Yes |
 
 CryptoKit and swift-crypto do not expose the key schedule values, so the Swift tests compare opened plaintexts and exported values. The phone side checks sender behavior by round trip. A Swift test seals with `HPKE.Sender`, and the Node check opens the result in the live pairing test.
 

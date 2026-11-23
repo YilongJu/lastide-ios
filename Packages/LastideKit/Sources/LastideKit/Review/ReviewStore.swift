@@ -289,6 +289,26 @@ public struct ReviewStore: Hashable, Sendable {
         return decision
     }
 
+    /// Builds the decision of a lock-screen Approve or Delete from the notice the app opened again (design 6.5, step 6).
+    /// The target is the notice's draft, `storeVersion` is the notice's, and `text` and `scopeOptionId` are null.
+    /// The decision enters the outbox, because the phone sends it through `/frames` or its socket and waits for the
+    /// acknowledgement as for any other decision.
+    public mutating func decideFromNotice(_ notice: Notice, action: DecisionAction, now: Int) throws -> Decision {
+        precondition(!isDemo, "a notice reaches a paired PC's store only")
+        guard let draft = notice.draft else { throw ReviewError.unknownItem }
+        guard action == .approve || action == .delete else { throw ReviewError.actionDoesNotFit }
+        let target = Target(targetType: .draft, id: draft.id)
+        guard !isDesktopOnly(target) else { throw ReviewError.desktopOnly(.draft) }
+        guard !outbox.contains(where: { $0.decision.target == target }) else { throw ReviewError.decisionPending }
+        let decision = Decision(id: makeMessageID(), sentAt: now, decisionId: makeMessageID(), target: target,
+                                storeVersion: notice.storeVersion, action: action, text: nil, scopeOptionId: nil,
+                                decidedAt: now)
+        try SyncMessage.decision(decision).validate()
+        cache.refusals[target] = nil
+        outbox.append(OutboxEntry(decision: decision, lastSentAt: nil, lastSeq: nil, stored: false, droppedReason: nil))
+        return decision
+    }
+
     // MARK: Outbox
 
     /// The decisions to send now. After a `welcome`: every decision without `stored`, and every one last sent more than 6 days ago.

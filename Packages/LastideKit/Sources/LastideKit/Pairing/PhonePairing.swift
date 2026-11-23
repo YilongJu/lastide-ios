@@ -17,6 +17,9 @@ public struct PairingRecord: Hashable, Sendable, Codable {
     /// The highest `seq` accepted from the PC.
     public var lastRecvSeq: UInt64
     public var features: [Feature]
+    /// The App Attest key id of this pairing, or nil when the phone did not attest (design section 7.1).
+    /// A record written before phase 7 lacks the field.
+    public var attestKeyId: String?
 
     /// The PC key as a key value.
     public func pcPublicKey() throws -> Curve25519.KeyAgreement.PublicKey {

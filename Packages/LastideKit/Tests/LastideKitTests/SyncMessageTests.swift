@@ -200,6 +200,7 @@ final class SyncMessageTests: XCTestCase {
             .counts: (.message, [], 0), .evidence: (.message, .replyKey, 0), .acknowledgement: (.message, .mailbox, 0),
             .decision: (.message, .mailbox, 0), .sync: (.message, [], 0), .evidenceRequest: (.message, [], 0),
             .unpair: (.message, .mailbox, 0), .error: (.message, [], 0), .notice: (.push, [], 0),
+            .countUpdate: (.push, [], 1),
         ]
         XCTAssertEqual(routes.count, MessageType.allCases.count)
         for (type, route) in routes {

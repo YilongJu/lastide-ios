@@ -103,7 +103,8 @@ func relayHeaderCheck(_ frame: Data) -> Int? {
     if seq < 1 || seq >= LastideProtocol.seqLimit { return 4400 }
     let flags = bytes[2], slot = bytes[3]
     switch bytes[1] {
-    case 1, 4: if flags != 0 || slot != 0 { return 4400 }
+    case 1: if flags != 0 || slot != 0 { return 4400 }
+    case 4: if flags != 0 || slot > 1 { return 4400 }
     case 2: if flags != 0 || slot > 1 { return 4400 }
     default:
         if flags & 0x01 != 0 {

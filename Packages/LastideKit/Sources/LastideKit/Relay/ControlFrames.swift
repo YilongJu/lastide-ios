@@ -27,6 +27,31 @@ public struct Welcome: Hashable, Sendable {
     public let pcOnline: Bool?
     public let pcLastSeenAt: Int?
     public let mailbox: Int
+    /// The 32 random bytes of a pairing socket's App Attest challenge, while the relay runs phase 7 (protocol 9.6).
+    /// Always nil for the other roles.
+    public let attestChallenge: Data?
+}
+
+/// The token types of a `push-token` frame (protocol 9.2).
+public enum PushTokenType: String, Sendable, CaseIterable {
+    /// The app's device token for alert and background pushes.
+    case alert
+    /// The widget extension's token for widget pushes.
+    case widgets
+}
+
+/// The APNs host a device token belongs to (protocol 9.2).
+public enum PushEnvironment: String, Sendable, CaseIterable {
+    case sandbox, production
+
+    /// Maps the `aps-environment` entitlement value: `development` reports `sandbox` (design section 4.3).
+    public init?(entitlement: String) {
+        switch entitlement {
+        case "development": self = .sandbox
+        case "production": self = .production
+        default: return nil
+        }
+    }
 }
 
 /// Why a control frame from the relay was refused.
@@ -53,6 +78,20 @@ public enum ControlFrame {
         json(["op": "hello", "v": 1, "role": "pairing", "ticket": ticket.base64url])
     }
 
+    /// The `push-token` frame of protocol 9.2. A nil token removes that token at the relay.
+    public static func pushToken(rid: String, type: PushTokenType, token: Data?, environment: PushEnvironment) -> String {
+        if let token { precondition((16...100).contains(token.count), "a device token holds 16 to 100 bytes") }
+        return json(["op": "push-token", "rid": rid, "pushType": type.rawValue,
+                     "token": token.map { $0.hex as Any } ?? NSNull(), "env": environment.rawValue])
+    }
+
+    /// The `attest` frame of protocol 9.6. `keyId` is App Attest's standard base64 text, as `generateKey` returns it.
+    public static func attest(rid: String, keyId: String, attestation: Data, pairRequestHash: Data) -> String {
+        precondition(pairRequestHash.count == 32, "the pair request hash holds 32 bytes")
+        return json(["op": "attest", "rid": rid, "keyId": keyId, "attestation": Base64URL.encode(attestation),
+                     "pairRequestHash": Base64URL.encode(pairRequestHash)])
+    }
+
     /// The `received` frame: every envelope from `from` up to `upTo` is handled.
     public static func received(from: DeviceID, upTo: UInt64) -> String {
         json(["op": "received", "from": from.base64url, "upTo": upTo])
@@ -72,9 +111,15 @@ public enum ControlFrame {
             let role = try need(f.role, "role")
             // Table 15: `welcome` carries `pcOnline` for the `phone` and `pairing` roles.
             if role == "phone" || role == "pairing" { _ = try need(f.pcOnline, "pcOnline") }
+            // Only a pairing socket reads the challenge. Other roles ignore the field, as protocol 9.7 says.
+            var challenge: Data?
+            if role == "pairing", let text = f.attestChallenge {
+                guard let bytes = try? Base64URL.decode(text, byteCount: 32) else { throw ControlFrameError.badField("attestChallenge") }
+                challenge = bytes
+            }
             return .welcome(Welcome(role: role, device: device, features: try need(f.features, "features"),
                                     pcOnline: f.pcOnline, pcLastSeenAt: f.pcLastSeenAt,
-                                    mailbox: try count(f.mailbox, "mailbox")))
+                                    mailbox: try count(f.mailbox, "mailbox"), attestChallenge: challenge))
         case "presence":
             return .presence(device: try deviceID(need(f.device, "device"), "device"), online: try need(f.online, "online"))
         case "ok":
@@ -109,9 +154,11 @@ public enum ControlFrame {
         let to: String?
         let seq: Int?
         let reason: String?
+        let attestChallenge: String?
 
         enum CodingKeys: String, CodingKey {
             case op, v, role, device, features, pcOnline, pcLastSeenAt, mailbox, online, rid, code, to, seq, reason
+            case attestChallenge
         }
 
         init(from decoder: Decoder) throws {
@@ -132,6 +179,7 @@ public enum ControlFrame {
             to = try c.decodeIfPresent(String.self, forKey: .to)
             seq = try c.decodeIfPresent(Int.self, forKey: .seq)
             reason = try c.decodeIfPresent(String.self, forKey: .reason)
+            attestChallenge = try c.decodeIfPresent(String.self, forKey: .attestChallenge)
         }
     }
 

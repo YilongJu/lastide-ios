@@ -28,13 +28,14 @@ The fixed values of protocol version 1 (Table 2).
 ```swift
 static let version: UInt8                       // 1
 static let webSocketSubprotocol: String         // "lastide-relay.1"
-static let schemaRevision: Int                  // 2
+static let schemaRevision: Int                  // 3, which adds count-update
 static let ciphersuite: HPKE.Ciphersuite        // Curve25519_SHA256_ChachaPoly
 static let headerSize: Int                      // 76
 static let tagSize: Int                         // 16
 static let smallestEnvelope: Int                // 92
 static let largestEnvelope: Int                 // 262_144
 static let largestPlaintext: Int                // 262_052
+static let largestPushEnvelope: Int             // 2_800, a kind 4 envelope
 static let largestControlFrame: Int             // 32_768
 static let seqLimit: UInt64                     // 2^53
 static let largestInteger: Int                  // 2^53 - 1
@@ -238,6 +239,7 @@ var pcLastSeenAt: Int?
 var lastSentSeq: UInt64
 var lastRecvSeq: UInt64
 var features: [Feature]
+var attestKeyId: String?             // the App Attest key id; nil when the phone did not attest, and in older records
 func pcPublicKey() throws -> Curve25519.KeyAgreement.PublicKey
 var socketURL: URL
 ```
@@ -293,6 +295,8 @@ Builds and parses the control frames the phone uses.
 static let ping: String                                            // "ping", every 30 s
 static func helloPhone(device: DeviceID, token: Data) -> String
 static func helloPairing(ticket: PairingTicket) -> String
+static func pushToken(rid: String, type: PushTokenType, token: Data?, environment: PushEnvironment) -> String  // nil token: null
+static func attest(rid: String, keyId: String, attestation: Data, pairRequestHash: Data) -> String
 static func received(from: DeviceID, upTo: UInt64) -> String
 static func parse(_ text: String) throws -> RelayFrame             // throws ControlFrameError
 ```
@@ -322,7 +326,12 @@ let features: [String]
 let pcOnline: Bool?
 let pcLastSeenAt: Int?
 let mailbox: Int
+let attestChallenge: Data?           // 32 bytes, read on a pairing socket only
 ```
+
+### `enum PushTokenType: String` and `enum PushEnvironment: String`
+
+`PushTokenType` is `alert` or `widgets`. `PushEnvironment` is `sandbox` or `production`, and `init?(entitlement:)` maps the `aps-environment` value `development` to `sandbox`.
 
 ### `enum ControlFrameError: Error`
 
@@ -358,7 +367,10 @@ One sync message, checked against every constraint of section 7.3.
 case pairRequest(PairRequest), pairReceived(PairReceived), pairAccept(PairAccept), pairRefuse(PairRefuse)
 case queue(QueueSnapshot), library(LibrarySnapshot), counts(Counts), evidence(Evidence), acknowledgement(Acknowledgement)
 case decision(Decision), sync(SyncRequest), evidenceRequest(EvidenceRequest), unpair(Unpair), error(ErrorMessage), notice(Notice)
-static func decode(_ plaintext: Data) throws -> SyncMessage    // throws MessageDecodingError
+case countUpdate(CountUpdate)
+static func decode(_ plaintext: Data, revision: Int = LastideProtocol.schemaRevision) throws -> SyncMessage
+                                                               // throws MessageDecodingError; a type that revision does
+                                                               // not define throws unknownType
 func encoded() throws -> Data                                  // throws ValidationError
 func validate() throws
 var type: MessageType
@@ -375,6 +387,7 @@ var kind: EnvelopeKind
 var direction: Direction
 var flags: EnvelopeFlags
 var slot: UInt8
+var firstRevision: Int               // 3 for count-update, 1 for every other type
 ```
 
 ### `enum Direction`
@@ -417,6 +430,7 @@ Each message type is `Hashable` and `Codable`, and holds `id: String` and `sentA
 | `Unpair` | No other field |
 | `ErrorMessage` | `inReplyTo: String?`, `code: ErrorCode`, `detail` |
 | `Notice` | `storeVersion`, `queueCount`, `draft: NoticeDraft?` |
+| `CountUpdate` | `storeVersion`, `queueCount`. Schema revision 3 |
 
 ```swift
 SyncRequest.init(id: String, sentAt: Int, schema: Int, have: SnapshotVersions)
@@ -494,6 +508,7 @@ func seenAt(_ target: Target) -> Int?
 @discardableResult
 mutating func apply(_ message: SyncMessage) -> AcknowledgementOutcome?
 mutating func decide(_ target: Target, action: DecisionAction, text: String?, scopeOptionId: String?, now: Int) throws -> Decision
+mutating func decideFromNotice(_ notice: Notice, action: DecisionAction, now: Int) throws -> Decision  // approve or delete
 func decisionsToSend(now: Int) -> [Decision]
 mutating func markSent(decisionId: String, seq: UInt64, now: Int)
 mutating func apply(relayFrame frame: RelayFrame)
@@ -591,3 +606,41 @@ let counts: Counts
 ### `enum DemoFixtureError: Error`
 
 Why a fixture could not load: `missing(String)`, `wrongType`.
+
+## Push and App Attest (phase 7)
+
+The notification service extension, the action handler and the count update handler of the app call these. Design document `docs/DESIGN-phone-push-attest-20261123.md` in the Lastide workspace gives the steps.
+
+### `enum PushOpener`
+
+```swift
+static let noticeSlot: UInt8                     // 0
+static let countUpdateSlot: UInt8                // 1
+static func envelope(from payload: [AnyHashable: Any]) throws -> Data      // step 1: lastide.v and lastide.e
+static func open(_ envelope: Data, slot: UInt8, records: [PairingRecord],
+                 phoneKey: (PairingRecord) throws -> Data?, revision: Int = LastideProtocol.schemaRevision) throws -> OpenedPush
+static func openNotice(payload: [AnyHashable: Any], records: [PairingRecord], phoneKey: (PairingRecord) throws -> Data?,
+                       state: (PairingRecord) throws -> PushState?) throws -> (OpenedPush, PushState?)  // adds the replay check
+```
+
+Every throw is a `PushFailure`: `payload`, `header`, `unknownPairing`, `noKey`, `openFailed`, `replay` or `badMessage`. Its raw value is the outcome code the extension writes. `OpenedPush` holds `record`, `seq` and `message`, with `notice` and `countUpdate` as shortcuts.
+
+### `enum PushText` and `struct NotificationText`
+
+`NotificationText` holds `title`, `subtitle`, `body` and `category`. `PushText` holds the categories `PROPOSED_RULE` and `LASTIDE_PLAIN`, the action ids `APPROVE`, `DELETE` and `OPEN`, the fallback text, and the texts of the extension, the action handler and the widget. `notice(_:pcName:showsRuleText:)` gives steps 10 and 11 of the extension. `showsRuleText(setting:previews:)` combines the switch with iOS's `PreviewSetting`.
+
+### `enum NoticeActionGuard`
+
+`check(_:shownSeq:shown:)` returns the notice to act on, or throws `NoticeActionRefusal`: `noDraft`, `notShown` or `textDiffers`. It passes only when the notice holds a draft, its `seq` equals `shownSeq`, and the shown text equals the extension's text.
+
+### App Group records
+
+`PushState`, `CountState`, `ExtensionRun`, `GroupSettings` and `WidgetPushState` are the files of design Table 14. `GroupRecord.encode` and `decode` write them as JSON with sorted keys. `WaitingCount.newest(push:count:)` picks the record with the higher store version, a tie going to the later time, and `WaitingCount.badge` sums the newest counts.
+
+### `enum AttestClientData`
+
+`bytes(challenge:pairRequestHash:)` gives the 82 bytes of protocol 9.6, and `hash(challenge:pairRequestHash:)` their SHA-256.
+
+### `struct FramesRequest` and `enum FramesAnswer`
+
+`FramesRequest(record:token:envelope:)` builds the URL, the `Lastide-Device` value and the body of `POST /frames`. `FramesAnswer(status:body:)` reads the answer as `stored(seq:)`, `roomGone`, `notAttested` or `refused(String)`.

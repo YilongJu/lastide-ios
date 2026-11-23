@@ -151,7 +151,7 @@ final class PhonePairingTests: XCTestCase {
         XCTAssertEqual(request.phoneId, pairing.phoneID.base64url)
         XCTAssertEqual(request.phoneKey, Base64URL.encode(pairing.phoneKey.publicKey.rawRepresentation))
         XCTAssertEqual(request.consent.disclosure, "outside-ai-v1")
-        XCTAssertEqual(request.schema, 2, "the phone sends the schema revision it speaks")
+        XCTAssertEqual(request.schema, 3, "the phone sends the schema revision it speaks")
 
         let (received, pcCode) = try pairReceived(pairing)
         guard case .checkCode(let code) = try pairing.receive(received, now: sampleTime) else { return XCTFail("no code") }

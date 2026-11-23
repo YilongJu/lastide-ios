@@ -20,13 +20,17 @@ public enum MessageType: String, Sendable, CaseIterable {
     case unpair
     case error
     case notice
+    case countUpdate = "count-update"
+
+    /// The first schema revision that defines this type (protocol 7.1). Revision 3 adds `count-update`.
+    public var firstRevision: Int { self == .countUpdate ? 3 : 1 }
 
     /// The envelope kind that carries this type.
     public var kind: EnvelopeKind {
         switch self {
         case .pairRequest: return .pairRequest
         case .pairReceived, .pairAccept, .pairRefuse: return .pairReply
-        case .notice: return .push
+        case .notice, .countUpdate: return .push
         default: return .message
         }
     }
@@ -52,7 +56,7 @@ public enum MessageType: String, Sendable, CaseIterable {
     /// The header slot this type travels in.
     public var slot: UInt8 {
         switch self {
-        case .pairReceived, .queue: return 1
+        case .pairReceived, .queue, .countUpdate: return 1
         case .library: return 2
         default: return 0
         }
@@ -91,6 +95,7 @@ extension EvidenceRequest: MessageBody {}
 extension Unpair: MessageBody {}
 extension ErrorMessage: MessageBody {}
 extension Notice: MessageBody {}
+extension CountUpdate: MessageBody {}
 
 /// One sync message of section 7, decoded and checked against every constraint of section 7.3.
 public enum SyncMessage: Hashable, Sendable {
@@ -109,6 +114,7 @@ public enum SyncMessage: Hashable, Sendable {
     case unpair(Unpair)
     case error(ErrorMessage)
     case notice(Notice)
+    case countUpdate(CountUpdate)
 
     /// The message's `type`.
     public var type: MessageType {
@@ -128,6 +134,7 @@ public enum SyncMessage: Hashable, Sendable {
         case .unpair: return .unpair
         case .error: return .error
         case .notice: return .notice
+        case .countUpdate: return .countUpdate
         }
     }
 
@@ -148,6 +155,7 @@ public enum SyncMessage: Hashable, Sendable {
         case .unpair(let m): return m
         case .error(let m): return m
         case .notice(let m): return m
+        case .countUpdate(let m): return m
         }
     }
 
@@ -165,7 +173,8 @@ public enum SyncMessage: Hashable, Sendable {
     }
 
     /// Decodes one plaintext. Throws `badMessage` or `unknownType` as Table 12 assigns them.
-    public static func decode(_ plaintext: Data) throws -> SyncMessage {
+    /// A type that `revision` does not define yet counts as unknown, as it does on a device of that revision.
+    public static func decode(_ plaintext: Data, revision: Int = LastideProtocol.schemaRevision) throws -> SyncMessage {
         guard String(data: plaintext, encoding: .utf8) != nil else {
             throw MessageDecodingError(code: .badMessage, detail: "not UTF-8", messageID: nil, type: nil)
         }
@@ -176,7 +185,7 @@ public enum SyncMessage: Hashable, Sendable {
             throw MessageDecodingError(code: .badMessage, detail: "not a JSON object with a string type", messageID: nil, type: nil)
         }
         let messageID = probe.id.flatMap { (try? Check.b64u16($0, "id")) != nil ? $0 : nil }
-        guard let type = MessageType(rawValue: probe.type) else {
+        guard let type = MessageType(rawValue: probe.type), type.firstRevision <= revision else {
             throw MessageDecodingError(code: .unknownType, detail: "unknown type", messageID: messageID, type: probe.type)
         }
         let decoder = JSONDecoder()
@@ -198,6 +207,7 @@ public enum SyncMessage: Hashable, Sendable {
             case .unpair: message = .unpair(try decoder.decode(Unpair.self, from: plaintext))
             case .error: message = .error(try decoder.decode(ErrorMessage.self, from: plaintext))
             case .notice: message = .notice(try decoder.decode(Notice.self, from: plaintext))
+            case .countUpdate: message = .countUpdate(try decoder.decode(CountUpdate.self, from: plaintext))
             }
         } catch {
             throw MessageDecodingError(code: .badMessage, detail: "fails the schema of \(type.rawValue)",

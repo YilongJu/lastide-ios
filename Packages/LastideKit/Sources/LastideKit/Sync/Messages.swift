@@ -501,3 +501,16 @@ public struct Notice: Hashable, Sendable, Codable, Validatable {
         try draft?.validate(path + ".draft")
     }
 }
+
+/// The phase 7 `count-update` message, from schema revision 3: a count change while the phone is offline (protocol 9.3).
+public struct CountUpdate: Hashable, Sendable, Codable, Validatable {
+    public var id: String
+    public var sentAt: Int
+    public var storeVersion: Int
+    public var queueCount: Int
+
+    func validate(_ path: String) throws {
+        try Check.integer(storeVersion, path + ".storeVersion")
+        try Check.integer(queueCount, path + ".queueCount")
+    }
+}

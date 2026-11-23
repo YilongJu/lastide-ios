@@ -76,6 +76,7 @@ Terms:
 | `error` | `inReplyTo` is a nullable b64u16; `code` is `badMessage` or `unknownType`; `detail` has at most 200 code points | `ErrorMessage.validate` |
 | `notice` | `storeVersion`, `queueCount`; `draft` is null or a short draft | `Notice.validate` |
 | `notice.draft` | Item id, store version, draft kind, 1 to 600 code points of text, scope | `NoticeDraft.validate` |
+| `count-update`, revision 3 | `storeVersion` and `queueCount` are counts. A revision 2 device does not know the type | `CountUpdate.validate`, `SyncMessage.decode(_:revision:)` |
 
 ## Rules outside the schema
 
