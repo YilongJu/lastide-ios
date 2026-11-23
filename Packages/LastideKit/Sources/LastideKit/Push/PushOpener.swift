@@ -148,6 +148,8 @@ public enum PushText {
                                                   category: plainCategory)
     /// The local notice when the action handler refused to act.
     public static let actionRefused = "Lastide did not act on this notice. Open Lastide to review the rule."
+    /// The local notice when Approve or Delete arrived while the phone was locked, as from a paired Apple Watch.
+    public static let actionLocked = "Lastide acts on a notification only while iPhone is unlocked. Open Lastide to review the rule."
     /// The question the app asks before it asks iOS for notification permission.
     public static let permissionQuestion = "Get a notification when a rule waits for your review?"
 
@@ -171,16 +173,35 @@ public enum PushText {
         count >= 2 ? "\(count) rules wait for your review." : "A rule waits for your review."
     }
 
-    /// Whether the rule text may show: the switch "Show rule text in notifications" is on, and iOS shows previews.
-    public static func showsRuleText(setting: Bool, previews: PreviewSetting) -> Bool {
-        setting && previews != .never
+    /// Whether the rule text may show (design section 6.8, decision D7). With iOS's "When Unlocked" previews, iOS hides
+    /// the text until the person unlocks the phone, so the first switch decides. With "Always" previews the text would
+    /// show on a locked phone, so it also needs the switch "Show rule text while iPhone is locked". It never shows while
+    /// previews are off.
+    public static func showsRuleText(_ settings: GroupSettings, previews: PreviewSetting) -> Bool {
+        switch previews {
+        case .whenAuthenticated: return settings.showRuleText
+        case .always: return settings.showRuleText && settings.showRuleTextWhenLocked
+        case .never: return false
+        }
     }
 
-    /// Steps 10 and 11 of design section 6.4: the PC's name and the draft text with Approve and Delete, or the plain
-    /// waiting text.
+    /// The subtitle of a notice that shows its draft: the draft's scope. So a rule for every project never looks like
+    /// a rule for one project on the lock screen (design section 6.4, step 10).
+    public static func scopeLine(_ scope: Scope) -> String {
+        switch scope.kind {
+        case .everyProject: return "All projects"
+        case .kindOfWork: return "Kind of work: " + (scope.kindOfWork ?? "")
+        case .thisProject:
+            return (scope.projectNames.count == 1 ? "Project: " : "Projects: ") + scope.projectNames.joined(separator: ", ")
+        }
+    }
+
+    /// Steps 10 and 11 of design section 6.4: the PC's name, the draft's scope and the draft text with Approve and
+    /// Delete, or the plain waiting text. The PC sends a draft only when its whole text fits the notice, so the text
+    /// that shows is the text an approval applies (protocol section 7.3).
     public static func notice(_ notice: Notice, pcName: String, showsRuleText: Bool) -> NotificationText {
         if showsRuleText, let draft = notice.draft {
-            return NotificationText(title: pcName, subtitle: "", body: draft.text, category: ruleCategory)
+            return NotificationText(title: pcName, subtitle: scopeLine(draft.scope), body: draft.text, category: ruleCategory)
         }
         return NotificationText(title: appName, subtitle: "", body: waiting(notice.queueCount), category: plainCategory)
     }
@@ -203,14 +224,14 @@ public enum NoticeActionRefusal: String, Error, Sendable, CaseIterable {
 }
 
 /// The guard of a lock-screen action (design 6.5, steps 3 and 4). It trusts only the envelope the app opened again,
-/// the `shownSeq` the extension wrote, and a shown text equal to the text the extension sets.
+/// the `shownSeq` the extension wrote, and a shown title, subtitle, body and category equal to what the extension sets.
 public enum NoticeActionGuard {
     /// Returns the notice to act on, or throws `NoticeActionRefusal`.
     public static func check(_ opened: OpenedPush, shownSeq: UInt64?, shown: NotificationText) throws -> Notice {
-        guard let notice = opened.notice, let draft = notice.draft else { throw NoticeActionRefusal.noDraft }
+        guard let notice = opened.notice, notice.draft != nil else { throw NoticeActionRefusal.noDraft }
         guard let shownSeq, shownSeq == opened.seq else { throw NoticeActionRefusal.notShown }
-        let expected = NotificationText(title: opened.record.pcName, subtitle: "", body: draft.text,
-                                        category: PushText.ruleCategory)
+        // The text the extension sets with Approve and Delete: the PC's name, the scope and the whole draft text.
+        let expected = PushText.notice(notice, pcName: opened.record.pcName, showsRuleText: true)
         guard shown == expected else { throw NoticeActionRefusal.textDiffers }
         return notice
     }

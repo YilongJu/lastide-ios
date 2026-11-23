@@ -3,7 +3,7 @@ import Foundation
 @testable import LastideKit
 import XCTest
 
-/// The phone's push and attestation code against the push vector of protocol section 10.5 (design Table 20, S1 to S9).
+/// The phone's push and attestation code against the push vector of protocol section 10.5 (design Table 20, S1 to S11).
 final class PushTests: XCTestCase {
     private var vector: [String: Any] = [:]
     private var pcKey: Curve25519.KeyAgreement.PrivateKey!
@@ -120,7 +120,7 @@ final class PushTests: XCTestCase {
         XCTAssertEqual(PushText.plainCategory, "LASTIDE_PLAIN")
         XCTAssertEqual(PushText.hiddenPreviewsPlaceholder, "A rule waits for your review.")
         XCTAssertEqual(PushText.notice(notice, pcName: "My PC", showsRuleText: true),
-                       NotificationText(title: "My PC", subtitle: "", body: "Name each branch after its ticket.",
+                       NotificationText(title: "My PC", subtitle: "All projects", body: "Name each branch after its ticket.",
                                         category: "PROPOSED_RULE"))
         XCTAssertEqual(PushText.notice(notice, pcName: "My PC", showsRuleText: false),
                        NotificationText(title: "Lastide", subtitle: "", body: "2 rules wait for your review.",
@@ -134,14 +134,39 @@ final class PushTests: XCTestCase {
         XCTAssertEqual(PushText.waiting(0), "A rule waits for your review.")
         XCTAssertEqual(PushText.waiting(1), "A rule waits for your review.")
         XCTAssertEqual(PushText.waiting(7), "7 rules wait for your review.")
-        XCTAssertTrue(PushText.showsRuleText(setting: true, previews: .always))
-        XCTAssertTrue(PushText.showsRuleText(setting: true, previews: .whenAuthenticated))
-        XCTAssertFalse(PushText.showsRuleText(setting: true, previews: .never))
-        XCTAssertFalse(PushText.showsRuleText(setting: false, previews: .always))
+        let afterUnlock = GroupSettings(showRuleText: true, showRuleTextWhenLocked: false)
+        let alsoLocked = GroupSettings(showRuleText: true, showRuleTextWhenLocked: true)
+        let off = GroupSettings(showRuleText: false, showRuleTextWhenLocked: true)
+        XCTAssertTrue(PushText.showsRuleText(afterUnlock, previews: .whenAuthenticated))
+        XCTAssertFalse(PushText.showsRuleText(afterUnlock, previews: .always), "a locked phone shows the text only with the second switch")
+        XCTAssertTrue(PushText.showsRuleText(alsoLocked, previews: .always))
+        XCTAssertTrue(PushText.showsRuleText(alsoLocked, previews: .whenAuthenticated))
+        XCTAssertFalse(PushText.showsRuleText(alsoLocked, previews: .never))
+        XCTAssertFalse(PushText.showsRuleText(off, previews: .always))
+        XCTAssertFalse(PushText.showsRuleText(off, previews: .whenAuthenticated))
         XCTAssertEqual(PushText.actionRefused, "Lastide did not act on this notice. Open Lastide to review the rule.")
         XCTAssertEqual(PushText.actionNotSent(.approve), "Your approval did not reach the relay. Open Lastide to send it.")
         XCTAssertEqual(PushText.actionNotSent(.delete), "Your delete did not reach the relay. Open Lastide to send it.")
-        XCTAssertEqual(GroupSettings.standard.showRuleText, true, "decision D7: the rule text shows by default")
+        XCTAssertEqual(PushText.actionLocked,
+                       "Lastide acts on a notification only while iPhone is unlocked. Open Lastide to review the rule.")
+        XCTAssertEqual(GroupSettings.standard, afterUnlock,
+                       "decision D7: the rule text shows after an unlock, and on a locked phone only after the person turns that on")
+    }
+
+    /// The scope line is the subtitle of a notice that shows its draft, so a rule for every project never looks like a
+    /// rule for one project.
+    func testS3TheScopeLineNamesEveryScope() throws {
+        XCTAssertEqual(PushText.scopeLine(Scope(kind: .everyProject, kindOfWork: nil, projectNames: [])), "All projects")
+        XCTAssertEqual(PushText.scopeLine(Scope(kind: .thisProject, kindOfWork: nil, projectNames: ["web"])), "Project: web")
+        XCTAssertEqual(PushText.scopeLine(Scope(kind: .thisProject, kindOfWork: nil, projectNames: ["web", "api"])),
+                       "Projects: web, api")
+        XCTAssertEqual(PushText.scopeLine(Scope(kind: .kindOfWork, kindOfWork: "testing", projectNames: [])),
+                       "Kind of work: testing")
+        let notice = try XCTUnwrap(try SyncMessage.decode(Data(noticeText().utf8)).notice)
+        var oneProject = notice
+        oneProject.draft?.scope = Scope(kind: .thisProject, kindOfWork: nil, projectNames: ["web"])
+        XCTAssertEqual(PushText.notice(oneProject, pcName: "My PC", showsRuleText: true).subtitle, "Project: web")
+        XCTAssertEqual(PushText.notice(oneProject, pcName: "My PC", showsRuleText: false).subtitle, "")
     }
 
     /// The widget texts of design section 6.7.
@@ -227,7 +252,7 @@ final class PushTests: XCTestCase {
 
     func testS7TheActionGuardAllowsOnlyTheShownNoticeWithTheExtensionsText() throws {
         let opened = try PushOpener.open(try hex(entry("notice")["envelope"]), slot: 0, records: [record], phoneKey: key)
-        let shown = NotificationText(title: "My PC", subtitle: "", body: "Name each branch after its ticket.",
+        let shown = NotificationText(title: "My PC", subtitle: "All projects", body: "Name each branch after its ticket.",
                                      category: "PROPOSED_RULE")
         XCTAssertEqual(try NoticeActionGuard.check(opened, shownSeq: opened.seq, shown: shown).draft?.id, "d-0002")
         func refusal(_ shownSeq: UInt64?, _ text: NotificationText, _ push: OpenedPush? = nil) -> NoticeActionRefusal? {
@@ -252,7 +277,13 @@ final class PushTests: XCTestCase {
         XCTAssertEqual(refusal(opened.seq, text), .textDiffers, "another body")
         text = shown
         text.subtitle = "From the relay"
-        XCTAssertEqual(refusal(opened.seq, text), .textDiffers, "a subtitle")
+        XCTAssertEqual(refusal(opened.seq, text), .textDiffers, "another subtitle")
+        text = shown
+        text.subtitle = ""
+        XCTAssertEqual(refusal(opened.seq, text), .textDiffers, "a shown text without the scope")
+        text = shown
+        text.subtitle = "Project: web"
+        XCTAssertEqual(refusal(opened.seq, text), .textDiffers, "a narrower scope than the draft's")
         text = shown
         text.category = "LASTIDE_PLAIN"
         XCTAssertEqual(refusal(opened.seq, text), .textDiffers, "another category")
@@ -272,12 +303,16 @@ final class PushTests: XCTestCase {
         let count = CountState(storeVersion: 44, queueCount: 0, at: sampleTime + 60_000)
         let run = ExtensionRun(outcome: "shown", peakMemory: 9_437_184, at: sampleTime)
         let widget = WidgetPushState(token: "00ff", widgets: 1, at: sampleTime)
-        let settings = GroupSettings(showRuleText: false)
+        let settings = GroupSettings(showRuleText: false, showRuleTextWhenLocked: true)
         XCTAssertEqual(try GroupRecord.decode(PushState.self, GroupRecord.encode(push)), push)
         XCTAssertEqual(try GroupRecord.decode(CountState.self, GroupRecord.encode(count)), count)
         XCTAssertEqual(try GroupRecord.decode(ExtensionRun.self, GroupRecord.encode(run)), run)
         XCTAssertEqual(try GroupRecord.decode(WidgetPushState.self, GroupRecord.encode(widget)), widget)
         XCTAssertEqual(try GroupRecord.decode(GroupSettings.self, GroupRecord.encode(settings)), settings)
+        XCTAssertEqual(String(decoding: try GroupRecord.encode(settings), as: UTF8.self),
+                       #"{"showRuleText":false,"showRuleTextWhenLocked":true}"#)
+        XCTAssertThrowsError(try GroupRecord.decode(GroupSettings.self, Data(#"{"showRuleText":true}"#.utf8)),
+                             "a settings file without the second switch does not read as a default")
         XCTAssertEqual(String(decoding: try GroupRecord.encode(count), as: UTF8.self),
                        #"{"at":1794992460000,"queueCount":0,"storeVersion":44}"#)
         XCTAssertEqual(WaitingCount.newest(push: push, count: count),
@@ -328,6 +363,70 @@ final class PushTests: XCTestCase {
         var empty = ReviewStore(cache: ReviewCache(), outbox: [])
         XCTAssertThrowsError(try empty.decideFromNotice(plain, action: .approve, now: sampleTime))
         XCTAssertTrue(empty.outbox.isEmpty)
+    }
+
+    // MARK: S11
+
+    /// Stand-in stores for the extension's steps: one push record in memory, and the badge from that record.
+    private final class MemoryNoticeStore {
+        var push: PushState?
+        var saves: [PushState] = []
+        var settings = GroupSettings.standard
+
+        func store(_ record: PairingRecord, key: Data) -> NoticeStore {
+            NoticeStore(records: { [record] }, phoneKey: { _ in key }, loadPush: { _ in self.push },
+                        savePush: { state, _ in self.saves.append(state); self.push = state },
+                        settings: { self.settings },
+                        waitingCounts: {
+                            self.push.map { [WaitingCount(storeVersion: $0.storeVersion, queueCount: $0.queueCount, at: $0.at)] } ?? []
+                        })
+        }
+    }
+
+    func testS11TheReplayMarkAndTheCountsReachTheDiskBeforeThePreviewWait() throws {
+        let e = try XCTUnwrap(entry("notice")["e"] as? String)
+        let memory = MemoryNoticeStore()
+        let store = memory.store(record, key: phoneKey.rawRepresentation)
+        let timedOut = NoticeSteps.run(payload: payload(e), store: store, previews: { nil }, now: sampleTime)
+        XCTAssertEqual(timedOut, NoticeOutcome(text: PushText.fallback, badge: 2, outcome: "settings"))
+        XCTAssertEqual(memory.push, PushState(lastPushSeq: 1_794_992_520_000, shownSeq: nil, storeVersion: 43, queueCount: 2,
+                                              at: sampleTime), "the replay mark and the counts stay after a preview timeout")
+        let replay = NoticeSteps.run(payload: payload(e), store: store, previews: { .whenAuthenticated }, now: sampleTime + 1)
+        XCTAssertEqual(replay, NoticeOutcome(text: PushText.fallback, badge: nil, outcome: "replay"))
+        XCTAssertNil(memory.push?.shownSeq, "a replay never offers Approve")
+    }
+
+    func testS11AShownNoticeWritesShownSeqAndAPlainOneDoesNot() throws {
+        let e = try XCTUnwrap(entry("notice")["e"] as? String)
+        let shownText = NotificationText(title: "My PC", subtitle: "All projects", body: "Name each branch after its ticket.",
+                                         category: "PROPOSED_RULE")
+        let unlocked = MemoryNoticeStore()
+        let shown = NoticeSteps.run(payload: payload(e), store: unlocked.store(record, key: phoneKey.rawRepresentation),
+                                    previews: { .whenAuthenticated }, now: sampleTime)
+        XCTAssertEqual(shown, NoticeOutcome(text: shownText, badge: 2, outcome: "shown"))
+        XCTAssertEqual(unlocked.push?.shownSeq, 1_794_992_520_000)
+        XCTAssertEqual(unlocked.saves.map(\.shownSeq), [nil, 1_794_992_520_000])
+
+        let always = MemoryNoticeStore()
+        let plain = NoticeSteps.run(payload: payload(e), store: always.store(record, key: phoneKey.rawRepresentation),
+                                    previews: { .always }, now: sampleTime)
+        XCTAssertEqual(plain, NoticeOutcome(text: NotificationText(title: "Lastide", subtitle: "", body: "2 rules wait for your review.",
+                                                                   category: "LASTIDE_PLAIN"), badge: 2, outcome: "plain"),
+                       "with Always previews and the second switch off, a locked phone shows no rule text")
+        XCTAssertNil(always.push?.shownSeq)
+
+        let optedIn = MemoryNoticeStore()
+        optedIn.settings = GroupSettings(showRuleText: true, showRuleTextWhenLocked: true)
+        let lockedShown = NoticeSteps.run(payload: payload(e), store: optedIn.store(record, key: phoneKey.rawRepresentation),
+                                          previews: { .always }, now: sampleTime)
+        XCTAssertEqual(lockedShown.outcome, "shown")
+
+        let broken = MemoryNoticeStore()
+        let noKey = NoticeSteps.run(payload: payload(e), store: NoticeStore(
+            records: { [self.record] }, phoneKey: { _ in nil }, loadPush: { _ in nil }, savePush: { state, _ in broken.push = state },
+            settings: { .standard }, waitingCounts: { [] }), previews: { .whenAuthenticated }, now: sampleTime)
+        XCTAssertEqual(noKey, NoticeOutcome(text: PushText.fallback, badge: nil, outcome: "noKey"))
+        XCTAssertNil(broken.push)
     }
 
     // MARK: Control frames and the relay's header check

@@ -165,7 +165,7 @@ Table 3. A party sees metadata at most unless it holds a private key. The check 
 | The relay, its operator, or anyone who takes over the Worker or its storage | See IP addresses, times and sizes of all frames. See the pairing id, device ids, envelope kinds, flags, slots and seq values. See which devices are online, and which account created the room. See the tokens in hello frames and the stored token hashes. Drop, delay, withhold or replay frames. Delete the mailbox or the room. In phase 7, push any notification text to a paired phone, because the Worker holds the APNs key | Read a pairing message or a sync message. Change a frame unnoticed, because the header is the AEAD's associated data. Pose as the PC or as a paired phone, because Auth mode checks static keys. Pair a phone without the QR code and the person's typed code. Search for a pair request that matches a code it saw. The code exists only after the PC commits to one request. Learn the check code or any HPKE key. Read evidence words at rest or from a recording. They never enter the mailbox, and the phone deletes their reply key. Get a held decision applied more than 8 days after the phone sent it. Make a notification action act on fields that the extension did not open. Make an action act under text that the extension did not set |
 | A network attacker between a device and the relay | See that a device talks to the relay, when, and how much. Block traffic | Read hello frames or envelopes, because TLS covers them. With a trusted root certificate on the device, the attacker gets the relay's view above and nothing more |
 | Someone who photographs the QR code | Within 120 s, open the pairing socket before the person's phone does. That stops the person's pairing, and the person starts again with a new code. Seal messages to the PC key at any time | Complete a pairing. The PC answers one pair request per code. The person's phone shows a code only after the PC answers that phone's own request. A code that the person types matches the attacker's request at most 3 times in 1,000,000 per QR code. Use the ticket after 120 s, or after a phone used it. Join the room, because they lack a token. Get a sealed message accepted. The PC opens only pair requests that answer its open QR code, and Auth-mode messages from paired phones |
-| Someone who finds a lost phone, without its passcode | Read notification text on the lock screen in phase 7, unless the person hides previews in iOS settings | Read the cached data, because its files open only while the phone is unlocked. Read the keys while the phone has not been unlocked since its last restart. After the first unlock, the system can read the keys until the next restart. The phase 7 extension needs that to decrypt on a locked phone. Approve or delete from the lock screen, because both actions require an unlocked device |
+| Someone who finds a lost phone, without its passcode | Read rule text on the lock screen in phase 7, only when the person turned on "Show rule text while iPhone is locked" and iOS shows previews Always. Otherwise read only the count of waiting rules | Read the cached data, because its files open only while the phone is unlocked. Read the keys while the phone has not been unlocked since its last restart. After the first unlock, the system can read the keys until the next restart. The phase 7 extension needs that to decrypt on a locked phone. Approve or delete from the lock screen, because both actions require an unlocked device |
 | Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a project file that git may track: a file from before the PC kept its rule files out of git, or the project's own `CLAUDE.md` or `AGENTS.md`. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
 | Anyone who holds a revoked phone's keys and token | Read what the phone stored before the revoke. Open the envelopes it recorded before the revoke, except evidence words | Connect, because the relay deleted its token hash. The phone bridge repeats `remove-phone` until the relay confirms it. Receive new messages, because the PC stopped sealing to its key and the relay deleted its mailbox. Get a frame accepted, because the PC deleted its phone key. Pair again without a new QR code on the PC |
 | Anyone who knows the pairing id, such as a QR code viewer or a revoked phone | Open sockets to the room that wait for `hello`. Each such socket closes the oldest waiting socket when the room's limit is reached | Join the room, because joining needs a token or an open ticket. Hold a waiting socket for more than 10 s. Hold more than 2 waiting sockets from one client address |
@@ -1004,10 +1004,10 @@ Body: the 32-byte phone token, then one envelope of 92 to 262,144 bytes
 
 1. The Worker checks the method, the path and the `Lastide-Device` header. A request without `Content-Length`, or with `Transfer-Encoding`, gets 400 before the Worker reads the body.
 2. A `Content-Length` above 262,176 gets 413, and one below 124 gets 400.
-3. The Worker reads the body through a reader that stops at 262,176 bytes. The bytes read must equal `Content-Length`, or the request gets 400.
-4. The Worker reads `relay_rooms` as the upgrade does. Then it calls the room's RPC `postFrame(device, body, address)` with the `CF-Connecting-IP` address.
-5. The room counts every request before any token check. It allows 120 a minute per room and 30 a minute per client address. The address counts by its `addrHash` (section 6.2).
-6. The room hashes the token and compares it in constant time. Only an authenticated request counts against the phone's 30 a minute.
+3. The Worker reads `relay_rooms` as the upgrade does, before it reads the body. So a request to a pairing id without a room reads no body.
+4. The Worker reads the body through a reader that stops at 262,176 bytes. The bytes read must equal `Content-Length`, or the request gets 400. Then it calls the room's RPC `postFrame(device, body, address)` with the `CF-Connecting-IP` address.
+5. The room counts every request per client address before any token check, 30 a minute. The address counts by its `addrHash` (section 6.2).
+6. The room hashes the token and compares it in constant time. Only a request that passes counts against the phone's 30 a minute and the room's 120 a minute. So requests with a wrong token use up only the minutes of their own addresses.
 7. The envelope passes the header checks of section 6.5. It is kind 3 with MAILBOX and without REPLY_KEY, from the device to the PC.
 8. The room stores it in the mailbox as a frame from that phone. It forwards the envelope when the PC is live.
 
@@ -1521,7 +1521,7 @@ Field notes that the schema cannot state:
 - `evidence.items[].words` holds at most 300 code points. The PC redacts email addresses and phone numbers and cuts the text before it sends.
 - `deviceName` is `UIDevice.current.name`, which reads "iPhone" from iOS 16 on without a special entitlement. `model` is the hardware model identifier from `utsname.machine`, for example "iPhone17,3". The PC shows both while the person names the phone.
 - `pcName` is the PC name from Lastide Settings, "My PC" by default, and never the Windows computer name. In phase 7 it becomes the notification title.
-- The PC shortens `notice.draft.text` until the push envelope fits in 2,800 bytes. When the draft does not fit even then, the PC sends `draft` as null.
+- The PC sends `notice.draft` only with the draft's whole text, which holds at most 600 code points. The push envelope must then fit in 2,800 bytes. Otherwise it sends `draft` as null. A lock-screen Approve applies the draft's whole text, so the phone never shows a cut of it.
 - `notice.queueCount` and `count-update.queueCount` hold the count that the phone's badge shows. That count is the drafts of the queue snapshot at the phone's revision, plus `omitted`.
 
 ### 7.4 Decisions: what the PC applies and refuses
@@ -1740,9 +1740,10 @@ The notification service extension runs these steps:
 3. Find the pairing whose phone id equals the header's recipient. Read its key from the shared keychain group.
 4. Open the envelope in Auth mode with the PC key and `INFO_PUSH`.
 5. Drop the push when its `seq` is not above `lastPushSeq` of that pairing. The extension keeps `lastPushSeq` in the App Group and never touches `lastRecvSeq`.
-6. Check the plaintext as a `notice` against section 7.3, and store the counts in the App Group.
-7. When the rule text may show and the notice holds a draft, show the draft. Set the title to the PC's name and the subtitle to empty. Set the body to `draft.text` and the category to `PROPOSED_RULE`. Store `shownSeq` = `seq` for that pairing.
-8. Otherwise set the title to "Lastide", the category to `LASTIDE_PLAIN`, and a body that counts the waiting rules.
+6. Check the plaintext as a `notice` against section 7.3. Store `lastPushSeq` and the counts in the App Group before any later step. A step that fails or times out then still drops a replay and keeps the count.
+7. The rule text may show when iOS shows previews "When Unlocked" and the switch "Show rule text in notifications" is on. With "Always" previews it also needs the switch "Show rule text while iPhone is locked", which is off by default. It never shows while previews are off.
+8. When the rule text may show and the notice holds a draft, show the draft. Set the title to the PC's name and the subtitle to the draft's scope: "All projects", "Project: <name>", "Projects: <names>" or "Kind of work: <kind>". Set the body to `draft.text` and the category to `PROPOSED_RULE`. Store `shownSeq` = `seq` for that pairing.
+9. Otherwise set the title to "Lastide", the category to `LASTIDE_PLAIN`, and a body that counts the waiting rules.
 
 A failed step, a replay or the end of the extension's time shows fixed text, with `LASTIDE_PLAIN`. The title reads "Lastide", and the body reads "Open Lastide to see what changed." The extension never sets a `lastide` key in `userInfo`. When iOS does not run the extension at all, the relay's placeholder text shows.
 
@@ -1750,13 +1751,14 @@ Two categories exist. `PROPOSED_RULE` carries Approve (`APPROVE`, `authenticatio
 
 Approve and Delete run in the app, in the background:
 
-1. The app opens `lastide.e` of the notification again, with steps 1 to 4 and 6 above.
-2. The app refuses unless the notice holds a draft and the header's `seq` equals `shownSeq` of that pairing.
-3. The app refuses unless the shown text is what step 7 sets. The title is the PC's name, the subtitle is empty, the body is `draft.text` and the category is `PROPOSED_RULE`.
-4. On a refusal the app sends nothing, and posts a local notification that asks the person to open Lastide.
-5. The app builds a `decision` for the draft with the notice's `storeVersion`. Its `text` and `scopeOptionId` are null.
-6. While the app holds an open socket to that room, the decision goes on that socket.
-7. Otherwise the app seals a kind 3 envelope with MAILBOX in slot 0, and posts it to `/frames` (section 6.14). The app opens no socket to that room until the POST answers.
+1. The app refuses while the phone is locked, which `isProtectedDataAvailable` reports. An action from a paired Apple Watch can arrive while the phone stays locked.
+2. The app opens `lastide.e` of the notification again, with steps 1 to 4 and 6 above.
+3. The app refuses unless the notice holds a draft and the header's `seq` equals `shownSeq` of that pairing.
+4. The app refuses unless the shown text is what step 8 sets. The title is the PC's name, the subtitle is the draft's scope, the body is `draft.text` and the category is `PROPOSED_RULE`.
+5. On a refusal the app sends nothing, and posts a local notification that asks the person to open Lastide.
+6. The app builds a `decision` for the draft with the notice's `storeVersion`. Its `text` and `scopeOptionId` are null.
+7. While the app holds an open socket to that room, the decision goes on that socket.
+8. Otherwise the app seals a kind 3 envelope with MAILBOX in slot 0, and posts it to `/frames` (section 6.14). The app opens no socket to that room until the POST answers.
 
 The relay writes the payload, so it can plant any `userInfo` key. It can also send a shown envelope again with its own text and no `mutable-content`. So the actions trust only the envelope that the app opens and the `shownSeq` that the extension wrote. The shown text must equal the extension's text.
 
@@ -1782,7 +1784,7 @@ clientDataHash = SHA-256(clientData)
 
 4. The phone sends `attest` with `rid`, `keyId`, `attestation` and `pairRequestHash`, and waits up to 10 s for `ok`. Then it sends the pair request. A phone whose `DCAppAttestService` reports no support skips the attestation.
 5. A socket may send one `attest`, and only before its kind 1 envelope. A second one, or one after the envelope, closes the socket with 4403.
-6. The relay runs Apple's 11 server steps. It wants exactly two certificates in `x5c`, and the nonce extension `1.2.840.113635.100.8.2` exactly once.
+6. The relay runs Apple's 11 server steps. It wants exactly two certificates in `x5c`, and the second must not be Apple's root itself. It wants the nonce extension `1.2.840.113635.100.8.2` exactly once.
 7. A production key needs validation category 2 (TestFlight) or 4 (App Store). A development key passes only while `RELAY_ATTEST_DEV` is `on`, and needs category 3. Only the preview Worker may set that variable.
 8. The bundle version must be text of 1 to 64 code points. The relay refuses a key id that a phone row of the room already holds.
 9. A refused check closes the socket with 4402. A good attestation gets `ok`, and the socket keeps it until `add-phone`.

@@ -62,7 +62,8 @@ enum AppText {
     static let attestFailed = "Apple could not check this app right now. Try again in a minute."
     static let notificationsRegistered = "Notifications registered"
     static let showRuleText = "Show rule text in notifications"
-    static let showRuleTextNote = "Rule text shows on the lock screen. To hide it until you unlock the phone, set Show Previews to When Unlocked in iOS Settings, Notifications."
+    static let showRuleTextWhenLocked = "Show rule text while iPhone is locked"
+    static let showRuleTextNote = "Rule text shows once you unlock iPhone. If iOS shows previews Always, a locked iPhone shows it only with the second switch on."
     static let turnOn = "Turn On"
     static let notNow = "Not Now"
 

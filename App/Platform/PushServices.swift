@@ -34,6 +34,19 @@ final class URLSessionFramesPoster: FramesPoster {
     }
 }
 
+/// Whether the phone is unlocked when a lock-screen action arrives (design 6.5, step 1). `authenticationRequired` asks
+/// iOS for an unlocked device, and a paired Apple Watch can still send an action while the phone stays locked.
+@MainActor
+protocol DeviceLock: AnyObject {
+    /// True while files with `complete` protection open, which iOS allows only while the phone is unlocked.
+    var isUnlocked: Bool { get }
+}
+
+@MainActor
+final class SystemDeviceLock: DeviceLock {
+    var isUnlocked: Bool { UIApplication.shared.isProtectedDataAvailable }
+}
+
 /// Posts a local notification with the plain category (design 6.5, steps 5 and 10).
 @MainActor
 protocol LocalNotices: AnyObject {

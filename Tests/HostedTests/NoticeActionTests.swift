@@ -3,7 +3,7 @@ import Foundation
 import LastideKit
 import XCTest
 
-/// Design Table 21, checks U7 and U8: the handler of a lock-screen Approve or Delete, on a model with fake services.
+/// Design Table 21, checks U7, U8 and U11: the handler of a lock-screen Approve or Delete, on a model with fake services.
 @MainActor
 final class NoticeActionTests: XCTestCase {
     private var vector: PushVector!
@@ -107,6 +107,24 @@ final class NoticeActionTests: XCTestCase {
         XCTAssertEqual(entry.decision.storeVersion, 43)
         XCTAssertTrue(entry.stored, "a 202 marks the decision stored")
         XCTAssertTrue(harness.notices.posted.isEmpty)
+    }
+
+    /// U11: an action that arrives while the phone is locked, as from a paired Apple Watch, sends nothing and posts the
+    /// locked notice. The same action on the unlocked phone acts.
+    func testU11AnActionOnALockedPhoneSendsNothing() async throws {
+        harness.lock.isUnlocked = false
+        for action in [DecisionAction.approve, .delete] {
+            let result = try await act(vector.shownText, action: action)
+            XCTAssertEqual(result, .locked, "\(action) on a locked phone")
+        }
+        XCTAssertEqual(harness.notices.posted, [PushText.actionLocked, PushText.actionLocked])
+        XCTAssertTrue(harness.frames.requests.isEmpty)
+        XCTAssertTrue(harness.sockets.sockets.isEmpty)
+        XCTAssertTrue(harness.model.store.outbox.isEmpty)
+        harness.lock.isUnlocked = true
+        let result = try await act(vector.shownText)
+        XCTAssertEqual(result, .stored)
+        XCTAssertEqual(harness.frames.requests.count, 1)
     }
 
     /// Any answer but 202 leaves the decision for the next connection and posts the local notice.

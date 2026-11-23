@@ -40,11 +40,13 @@ struct ModelServices {
     let access: NotificationAccess
     let widgets: WidgetPushSource
     let attester: AppAttester
+    let lock: DeviceLock
 
     /// The real services.
     static func live() -> ModelServices {
         ModelServices(sockets: URLSessionSocketFactory(), frames: URLSessionFramesPoster(), notices: UserNotificationsPoster(),
-                      access: UserNotificationsAccess(), widgets: WidgetKitPushSource(), attester: DeviceCheckAttester())
+                      access: UserNotificationsAccess(), widgets: WidgetKitPushSource(), attester: DeviceCheckAttester(),
+                      lock: SystemDeviceLock())
     }
 }
 
@@ -58,6 +60,8 @@ enum NoticeActionResult: Equatable, Sendable {
     case notSent(String)
     /// The model sent nothing. The text names the failed check.
     case refused(String)
+    /// The model sent nothing, because the phone was locked when the action arrived.
+    case locked
 }
 
 /// Everything the screens draw, and every action the screens take.
@@ -152,7 +156,7 @@ final class AppModel {
         self.facts = facts
         services = ModelServices(sockets: sockets, frames: URLSessionFramesPoster(), notices: UserNotificationsPoster(),
                                  access: UserNotificationsAccess(), widgets: WidgetKitPushSource(),
-                                 attester: UnsupportedAttester())
+                                 attester: UnsupportedAttester(), lock: SystemDeviceLock())
         now = currentTimeMs
         live = false
         store = try ReviewStore.demo()
@@ -399,6 +403,7 @@ final class AppModel {
         diagnostics.lastNotificationAction = "\(action.rawValue): \(result)"
         switch result {
         case .refused: services.notices.post(PushText.actionRefused)
+        case .locked: services.notices.post(PushText.actionLocked)
         case .notSent: services.notices.post(PushText.actionNotSent(action))
         case .sentOnSocket, .stored: break
         }
@@ -406,6 +411,9 @@ final class AppModel {
     }
 
     private func act(envelope: Data?, action: DecisionAction, shown: NotificationText) async -> NoticeActionResult {
+        // The model stays loaded after the phone locks, so the model checks the lock itself. An action from a paired
+        // Apple Watch can arrive while the phone stays locked (design 6.5, step 1).
+        guard services.lock.isUnlocked else { return .locked }
         guard let files, let group, let secrets, isLoaded else { return .refused("the app has not loaded its files") }
         guard let envelope else { return .refused("the notification holds no envelope") }
         let opened: OpenedPush
@@ -534,6 +542,16 @@ final class AppModel {
     /// The switch "Show rule text in notifications" changed.
     func setShowRuleText(_ on: Bool) {
         groupSettings.showRuleText = on
+        saveGroupSettings()
+    }
+
+    /// The switch "Show rule text while iPhone is locked" changed.
+    func setShowRuleTextWhenLocked(_ on: Bool) {
+        groupSettings.showRuleTextWhenLocked = on
+        saveGroupSettings()
+    }
+
+    private func saveGroupSettings() {
         guard let group else { return }
         do { try group.saveSettings(groupSettings) } catch { diagnostics.lastError = "settings.json not written: \(error)" }
     }

@@ -50,7 +50,8 @@ struct PushVector {
 
     /// The text the extension sets for the vector's notice with the rule text shown.
     var shownText: NotificationText {
-        NotificationText(title: "My PC", subtitle: "", body: "Name each branch after its ticket.", category: "PROPOSED_RULE")
+        NotificationText(title: "My PC", subtitle: "All projects", body: "Name each branch after its ticket.",
+                         category: "PROPOSED_RULE")
     }
 
     static func hex(_ value: Any?) throws -> Data {
@@ -168,6 +169,12 @@ final class FakeWidgets: WidgetPushSource {
     func reloadTimelines() { reloads += 1 }
 }
 
+/// A phone lock the tests set. The phone starts unlocked.
+@MainActor
+final class FakeDeviceLock: DeviceLock {
+    var isUnlocked = true
+}
+
 /// A model on fakes, with its fakes.
 @MainActor
 struct ModelHarness {
@@ -176,6 +183,7 @@ struct ModelHarness {
     let notices: FakeNotices
     let access: FakeAccess
     let widgets: FakeWidgets
+    let lock: FakeDeviceLock
     let model: AppModel
 
     init() throws {
@@ -184,8 +192,9 @@ struct ModelHarness {
         notices = FakeNotices()
         access = FakeAccess()
         widgets = FakeWidgets()
+        lock = FakeDeviceLock()
         let services = ModelServices(sockets: sockets, frames: frames, notices: notices, access: access, widgets: widgets,
-                                     attester: UnsupportedAttester())
+                                     attester: UnsupportedAttester(), lock: lock)
         model = try AppModel(facts: testFacts, services: services, now: currentTimeMs)
     }
 }

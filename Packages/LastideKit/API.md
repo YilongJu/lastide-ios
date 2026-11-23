@@ -627,15 +627,19 @@ Every throw is a `PushFailure`: `payload`, `header`, `unknownPairing`, `noKey`, 
 
 ### `enum PushText` and `struct NotificationText`
 
-`NotificationText` holds `title`, `subtitle`, `body` and `category`. `PushText` holds the categories `PROPOSED_RULE` and `LASTIDE_PLAIN`, the action ids `APPROVE`, `DELETE` and `OPEN`, the fallback text, and the texts of the extension, the action handler and the widget. `notice(_:pcName:showsRuleText:)` gives steps 10 and 11 of the extension. `showsRuleText(setting:previews:)` combines the switch with iOS's `PreviewSetting`.
+`NotificationText` holds `title`, `subtitle`, `body` and `category`. `PushText` holds the categories `PROPOSED_RULE` and `LASTIDE_PLAIN`, the action ids `APPROVE`, `DELETE` and `OPEN`, the fallback text, and the texts of the extension, the action handler and the widget. `notice(_:pcName:showsRuleText:)` gives steps 10 and 11 of the extension: with the rule text, the subtitle is `scopeLine(_:)` of the draft's scope, such as "All projects". `showsRuleText(_:previews:)` combines the two switches of `GroupSettings` with iOS's `PreviewSetting`. "When Unlocked" previews need the first switch, and "Always" previews need both. Without previews no rule text shows.
+
+### `enum NoticeSteps`
+
+`run(payload:store:previews:now:)` runs steps 1 to 12 of the notification service extension on a `NoticeStore`. The store holds the records, the phone key, the push records, the settings and the waiting counts. It returns a `NoticeOutcome`: the text, the badge and the outcome code. It writes the replay mark and the counts before it reads iOS's preview setting, so a timeout still keeps them. The extension passes the App Group and Keychain stores, and the package tests pass stand-ins.
 
 ### `enum NoticeActionGuard`
 
-`check(_:shownSeq:shown:)` returns the notice to act on, or throws `NoticeActionRefusal`: `noDraft`, `notShown` or `textDiffers`. It passes only when the notice holds a draft, its `seq` equals `shownSeq`, and the shown text equals the extension's text.
+`check(_:shownSeq:shown:)` returns the notice to act on, or throws `NoticeActionRefusal`: `noDraft`, `notShown` or `textDiffers`. It passes only when the notice holds a draft and its `seq` equals `shownSeq`. The shown title, subtitle, body and category must also equal what `notice(_:pcName:showsRuleText:)` sets with the rule text.
 
 ### App Group records
 
-`PushState`, `CountState`, `ExtensionRun`, `GroupSettings` and `WidgetPushState` are the files of design Table 14. `GroupRecord.encode` and `decode` write them as JSON with sorted keys. `WaitingCount.newest(push:count:)` picks the record with the higher store version, a tie going to the later time, and `WaitingCount.badge` sums the newest counts.
+`PushState`, `CountState`, `ExtensionRun`, `GroupSettings` and `WidgetPushState` are the files of design Table 14. `GroupSettings` holds `showRuleText` and `showRuleTextWhenLocked`; `standard` turns the first on and the second off. `GroupRecord.encode` and `decode` write them as JSON with sorted keys. `WaitingCount.newest(push:count:)` picks the record with the higher store version, a tie going to the later time, and `WaitingCount.badge` sums the newest counts.
 
 ### `enum AttestClientData`
 

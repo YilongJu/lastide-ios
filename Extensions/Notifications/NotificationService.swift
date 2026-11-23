@@ -49,45 +49,29 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 }
 
-/// Steps 1 to 12 of design section 6.4, on the App Group files and the shared Keychain group.
+/// Steps 1 to 12 of design section 6.4, on the App Group files and the shared Keychain group. `NoticeSteps` in
+/// LastideKit holds the steps, so the package tests run them on Linux.
 enum NoticeRun {
-    struct Result {
-        let text: NotificationText
-        let badge: Int?
-        /// `shown`, `plain`, or the step that failed.
-        let outcome: String
-    }
-
     static func currentTime() -> Int { Int((Date().timeIntervalSince1970 * 1_000).rounded(.down)) }
 
-    static func run(payload: [AnyHashable: Any], now: Int) -> Result {
-        do {
-            let group = try GroupFiles.shared()
-            let secrets = KeychainStore(accessGroup: try KeychainGroup.shared())
-            let (opened, previous) = try PushOpener.openNotice(
-                payload: payload, records: try group.loadRecords(),
-                phoneKey: { try secrets.load(account: SecretAccount.key($0.pairingId)) },
-                state: { try group.loadPush($0.pairingId) })
-            let id = opened.record.pairingId
-            guard let notice = opened.notice else { throw PushFailure.badMessage }
-            guard let previews = previewSetting() else {
-                return Result(text: PushText.fallback, badge: nil, outcome: "settings")
-            }
-            let showsRuleText = PushText.showsRuleText(setting: try group.loadSettings().showRuleText, previews: previews)
-            let text = PushText.notice(notice, pcName: opened.record.pcName, showsRuleText: showsRuleText)
-            let shown = text.category == PushText.ruleCategory
-            try group.savePush(PushState.after(opened, shown: shown, previous: previous, now: now), id)
-            let badge = WaitingCount.badge(try group.waitingCounts())
-            return Result(text: text, badge: badge, outcome: shown ? "shown" : "plain")
-        } catch let failure as PushFailure {
-            return Result(text: PushText.fallback, badge: nil, outcome: failure.rawValue)
-        } catch is GroupFiles.MissingContainer {
-            return Result(text: PushText.fallback, badge: nil, outcome: "noAppGroup")
-        } catch is KeychainGroup.Failure {
-            return Result(text: PushText.fallback, badge: nil, outcome: "noKeychainGroup")
+    static func run(payload: [AnyHashable: Any], now: Int) -> NoticeOutcome {
+        let group: GroupFiles
+        do { group = try GroupFiles.shared() } catch is GroupFiles.MissingContainer {
+            return NoticeOutcome(text: PushText.fallback, badge: nil, outcome: "noAppGroup")
         } catch {
-            return Result(text: PushText.fallback, badge: nil, outcome: "storage")
+            return NoticeOutcome(text: PushText.fallback, badge: nil, outcome: "storage")
         }
+        let secrets: KeychainStore
+        do { secrets = KeychainStore(accessGroup: try KeychainGroup.shared()) } catch is KeychainGroup.Failure {
+            return NoticeOutcome(text: PushText.fallback, badge: nil, outcome: "noKeychainGroup")
+        } catch {
+            return NoticeOutcome(text: PushText.fallback, badge: nil, outcome: "storage")
+        }
+        let store = NoticeStore(records: { try group.loadRecords() },
+                                phoneKey: { try secrets.load(account: SecretAccount.key($0.pairingId)) },
+                                loadPush: { try group.loadPush($0) }, savePush: { try group.savePush($0, $1) },
+                                settings: { try group.loadSettings() }, waitingCounts: { try group.waitingCounts() })
+        return NoticeSteps.run(payload: payload, store: store, previews: previewSetting, now: now)
     }
 
     /// Writes the outcome, the peak memory and the time to `extension-run.json`, which the diagnostics block shows.

@@ -4,7 +4,8 @@
 # The script signs the build ad hoc with the made-up Team ID TESTTEAM01, so no Apple account is needed. First the good
 # case must pass: sign_with_entitlements.sh, then check_export.sh on an .ipa of the signed app. Then each plant must
 # fail, and the script fails when a plant passes:
-#   sign_with_entitlements.sh: a planted "$(", an empty APPLE_TEAM_ID, a missing bundle
+#   sign_with_entitlements.sh: a planted "$(", an empty APPLE_TEAM_ID, a lowercase APPLE_TEAM_ID, a 9-character
+#   APPLE_TEAM_ID, a missing bundle
 #   check_export.sh: a widget without aps-environment, a widget with keychain-access-groups, a bundle with an unlisted
 #   key, and build numbers that differ
 # Usage, from the repository root: run_plants.sh PATH/TO/Release-iphoneos/Lastide.app
@@ -75,6 +76,11 @@ must_fail 'a planted $(' env APPLE_TEAM_ID="$team" bash -c 'cd "$1" && bash scri
   _ "$work/repo" "$work/plant1.xcarchive"
 make_archive "$work/plant2.xcarchive"
 must_fail 'an empty APPLE_TEAM_ID' env APPLE_TEAM_ID= bash scripts/ci/sign_with_entitlements.sh "$work/plant2.xcarchive"
+# A Team ID that is not 10 capital letters or digits would sign ad hoc, so only the script's own rule stops it.
+make_archive "$work/plant2a.xcarchive"
+must_fail 'a lowercase APPLE_TEAM_ID' env APPLE_TEAM_ID=testteam01 bash scripts/ci/sign_with_entitlements.sh "$work/plant2a.xcarchive"
+make_archive "$work/plant2b.xcarchive"
+must_fail 'a 9-character APPLE_TEAM_ID' env APPLE_TEAM_ID=TESTTEAM1 bash scripts/ci/sign_with_entitlements.sh "$work/plant2b.xcarchive"
 make_archive "$work/plant3.xcarchive"
 rm -rf "$work/plant3.xcarchive/Products/Applications/Lastide.app/PlugIns/LastideWidget.appex"
 must_fail 'a missing bundle' env APPLE_TEAM_ID="$team" bash scripts/ci/sign_with_entitlements.sh "$work/plant3.xcarchive"
@@ -117,6 +123,6 @@ plant_export 'a bundle with an unlisted key' app-unlisted
 plant_export 'build numbers that differ' build-numbers
 
 echo "plants: $failed_plants failed as they must, $passed_plants passed"
-if [ "$passed_plants" -ne 0 ] || [ "$failed_plants" -ne 7 ]; then
+if [ "$passed_plants" -ne 0 ] || [ "$failed_plants" -ne 9 ]; then
   exit 1
 fi

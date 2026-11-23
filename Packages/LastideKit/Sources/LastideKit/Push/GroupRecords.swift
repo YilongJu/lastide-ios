@@ -60,13 +60,20 @@ public struct ExtensionRun: Hashable, Sendable, Codable {
 
 /// `settings.json` in the App Group, which the app writes and the extension reads.
 public struct GroupSettings: Hashable, Sendable, Codable {
-    /// The switch "Show rule text in notifications".
+    /// The switch "Show rule text in notifications": the text shows once the person unlocks the phone.
     public var showRuleText: Bool
+    /// The switch "Show rule text while iPhone is locked": with iOS's "Always" previews, the text also shows on a
+    /// locked phone.
+    public var showRuleTextWhenLocked: Bool
 
-    public init(showRuleText: Bool) { self.showRuleText = showRuleText }
+    public init(showRuleText: Bool, showRuleTextWhenLocked: Bool) {
+        self.showRuleText = showRuleText
+        self.showRuleTextWhenLocked = showRuleTextWhenLocked
+    }
 
-    /// The value before the person changes the switch. Decision D7 recommends showing the rule text.
-    public static let standard = GroupSettings(showRuleText: true)
+    /// The values before the person changes a switch. Decision D7: the rule text shows after an unlock, and a locked
+    /// phone shows it only after the person turns that on.
+    public static let standard = GroupSettings(showRuleText: true, showRuleTextWhenLocked: false)
 }
 
 /// `widget-push.json` in the App Group, which the widget's push handler writes.

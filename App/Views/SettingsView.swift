@@ -147,8 +147,8 @@ struct DiagnosticsView: View {
     }
 }
 
-/// The Notifications section of design section 6.8: what iOS allows, a button that fixes it, and the switch
-/// "Show rule text in notifications".
+/// The Notifications section of design section 6.8: what iOS allows, a button that fixes it, and the switches
+/// "Show rule text in notifications" and "Show rule text while iPhone is locked".
 struct NotificationsSection: View {
     @Bindable var model: AppModel
 
@@ -170,6 +170,9 @@ struct NotificationsSection: View {
             }
             Toggle(AppText.showRuleText, isOn: Binding(get: { model.groupSettings.showRuleText },
                                                        set: { model.setShowRuleText($0) }))
+            Toggle(AppText.showRuleTextWhenLocked, isOn: Binding(get: { model.groupSettings.showRuleTextWhenLocked },
+                                                                 set: { model.setShowRuleTextWhenLocked($0) }))
+                .disabled(!model.groupSettings.showRuleText)
         } header: {
             Text("Notifications")
         } footer: {
