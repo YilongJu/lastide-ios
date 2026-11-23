@@ -17,6 +17,7 @@ struct SettingsView: View {
                 if PairingSection.showsSteps(flow.step) {
                     PairingSection(model: model, flow: flow)
                 }
+                NotificationsSection(model: model)
                 Section {
                     NavigationLink {
                         DiagnosticsView(model: model)
@@ -82,6 +83,9 @@ struct SettingsView: View {
                     if selected && model.roomGone {
                         StatusBadge(text: AppText.roomGone, systemImage: "exclamationmark.triangle")
                     }
+                    if model.registeredIDs.contains(record.pairingId) {
+                        StatusBadge(text: AppText.notificationsRegistered, systemImage: "bell")
+                    }
                 }
             }
             Spacer()
@@ -119,7 +123,8 @@ struct DiagnosticsView: View {
     }
 
     private var diagnosticsText: String {
-        model.diagnostics.text(build: model.facts.app, pairingState: pairingState, relayOrigin: model.selectedRecord?.relayOrigin)
+        model.diagnostics.text(build: model.facts.app, pairingState: pairingState, relayOrigin: model.selectedRecord?.relayOrigin,
+                               push: model.pushFacts)
     }
 
     /// The selected PC and its socket, and the pairing step while a pairing runs.
@@ -139,6 +144,37 @@ struct DiagnosticsView: View {
         }
         guard let step = PairingSection.diagnosticsWords(model.pairingFlow.step) else { return pc }
         return pc + "; pairing step: " + step
+    }
+}
+
+/// The Notifications section of design section 6.8: what iOS allows, a button that fixes it, and the switch
+/// "Show rule text in notifications".
+struct NotificationsSection: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Section {
+            LabeledContent("Notifications", value: model.permission.label)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("notificationsState")
+            switch model.permission {
+            case .off:
+                Button("Open iOS Settings") {
+                    guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+            case .notAsked:
+                Button(AppText.turnOn) { Task { await model.answerNotificationQuestion(turnOn: true) } }
+            case .on, .unknown:
+                EmptyView()
+            }
+            Toggle(AppText.showRuleText, isOn: Binding(get: { model.groupSettings.showRuleText },
+                                                       set: { model.setShowRuleText($0) }))
+        } header: {
+            Text("Notifications")
+        } footer: {
+            Text(AppText.showRuleTextNote)
+        }
     }
 }
 

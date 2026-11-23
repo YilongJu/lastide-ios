@@ -51,7 +51,8 @@ jobs:
         run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
       # The unit tests run the RFC 9180 and Lastide vectors through CryptoKit. The UI tests open every screen and state in
       # light and dark, on demo data or a synthetic paired PC, and write one picture per capture and scheme. Six captures
-      # run at the accessibility text size AX3. Each of the 50 launches takes about 15 s.
+      # run at the accessibility text size AX3. Each of the 58 launches takes about 15 s. The hosted tests run inside the app,
+      # because the Keychain and the App Group answer by the host's entitlements.
       - name: Run the unit tests and the screenshot tests
         timeout-minutes: 45
         env:
@@ -72,6 +73,7 @@ jobs:
           screens="$screens library libraryNotMeasured ruleDetail ruleDetailEdited learning learningNotMeasured learningEnd"
           screens="$screens settings settingsPaired diagnostics pairingDisclosure pairingScan pairingWaiting pairingCode pairingFailed"
           screens="$screens queue-large draftDetail-large library-large ruleDetail-large learning-large settings-large"
+          screens="$screens widgetSmall widgetRectangular settingsNotificationsOn settingsNotificationsOff"
           for screen in $screens; do
             for scheme in light dark; do
               if [ ! -s "build/screenshots/$screen-$scheme.png" ]; then

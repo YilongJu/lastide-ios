@@ -15,6 +15,13 @@ enum ScreenshotScreen: String, CaseIterable, Sendable {
     case libraryNotMeasured
     /// The same PC's Learning screen while it does not measure repeat corrections, violations or a daily cap yet.
     case learningNotMeasured
+    /// The waiting count as the small home screen widget and the lock screen widget draw it (design section 6.7).
+    case widgetSmall, widgetRectangular
+    /// The Settings screen of the paired PC with notifications on and registered, and with them off in iOS Settings.
+    case settingsNotificationsOn, settingsNotificationsOff
+
+    /// True for the two widget screens, which draw the widget's view instead of the tabs.
+    var isWidget: Bool { self == .widgetSmall || self == .widgetRectangular }
 }
 
 /// A screenshot run: `-LastideScreen <screen> -LastideColorScheme light|dark`. The run uses demo data only, and never
@@ -37,69 +44,65 @@ struct ScreenshotLaunch: Sendable {
 
 @main
 struct LastideApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @Environment(\.scenePhase) private var scenePhase
-    @State private var model: AppModel
-    private let screenshot: ScreenshotLaunch?
+    private let runtime = AppRuntime.shared
     private let background = BackgroundFlush()
-
-    init() {
-        let facts = DeviceFacts.current()
-        let screenshot = ScreenshotLaunch.fromArguments()
-        self.screenshot = screenshot
-        do {
-            if let screenshot {
-                let model = try AppModel(demoWith: facts, sockets: URLSessionSocketFactory())
-                switch screenshot.screen {
-                case .pairingDisclosure: model.showPairingStep(.disclosure)
-                case .pairingScan: model.showPairingStep(.scan)
-                case .pairingWaiting: model.showPairingStep(.waitingForPC)
-                // The check code of the Lastide test vector (protocol section 10.3).
-                case .pairingCode: model.showPairingStep(.checkCode("714 390"))
-                case .pairingFailed: model.showPairingStep(.failed(AppText.unreachable))
-                case .settingsPaired:
-                    model.showForScreenshot(records: [try ScreenshotStaging.record()], store: try ScreenshotStaging.store(queue: true))
-                case .queueWaiting:
-                    model.showForScreenshot(records: [try ScreenshotStaging.record()],
-                                            store: try ScreenshotStaging.store(queue: true, waitingApproval: true))
-                case .queueEmpty:
-                    model.showForScreenshot(records: [try ScreenshotStaging.record()], store: try ScreenshotStaging.store(queue: false))
-                case .libraryNotMeasured, .learningNotMeasured:
-                    model.showForScreenshot(records: [try ScreenshotStaging.record()],
-                                            store: try ScreenshotStaging.store(queue: true, measured: false))
-                case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings: break
-                }
-                _model = State(initialValue: model)
-            } else if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-                // The host of the hosted tests: the tests reach the Keychain and the App Group themselves, so the
-                // app reads no file and no Keychain item of its own.
-                _model = State(initialValue: try AppModel(demoWith: facts, sockets: URLSessionSocketFactory()))
-            } else {
-                _model = State(initialValue: try AppModel(facts: facts, storage: FileStorage.appSupport(),
-                                                          secrets: KeychainStore(), sockets: URLSessionSocketFactory(),
-                                                          now: currentTimeMs))
-            }
-        } catch {
-            fatalError("Lastide could not start: \(error)")
-        }
-    }
 
     var body: some Scene {
         WindowGroup {
-            RootView(model: model, screenshot: screenshot?.screen)
-                .preferredColorScheme(screenshot.map { $0.dark ? .dark : .light })
+            Group {
+                if let screenshot = runtime.screenshot, screenshot.screen.isWidget {
+                    WidgetScreenshotView(style: screenshot.screen == .widgetSmall ? .small : .rectangular)
+                } else {
+                    RootView(model: runtime.model, screenshot: runtime.screenshot?.screen)
+                }
+            }
+            .preferredColorScheme(runtime.screenshot.map { $0.dark ? .dark : .light })
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
-            guard screenshot == nil else { return }
+            guard runtime.screenshot == nil else { return }
+            let model = runtime.model
             switch phase {
             case .active:
                 model.cameToScreen()
             case .background:
-                let model = model
                 background.run { await model.leftScreen() }
             default:
                 break
             }
         }
+    }
+}
+
+extension ScreenshotStaging {
+    /// The demo model of one screenshot screen. It never reads the disk, the Keychain or the network.
+    @MainActor
+    static func model(for screen: ScreenshotScreen, facts: DeviceFacts) throws -> AppModel {
+        let model = try AppModel(demoWith: facts, sockets: URLSessionSocketFactory())
+        switch screen {
+        case .pairingDisclosure: model.showPairingStep(.disclosure)
+        case .pairingScan: model.showPairingStep(.scan)
+        case .pairingWaiting: model.showPairingStep(.waitingForPC)
+        // The check code of the Lastide test vector (protocol section 10.3).
+        case .pairingCode: model.showPairingStep(.checkCode("714 390"))
+        case .pairingFailed: model.showPairingStep(.failed(AppText.unreachable))
+        case .settingsPaired:
+            model.showForScreenshot(records: [try record()], store: try store(queue: true))
+        case .settingsNotificationsOn:
+            model.showForScreenshot(records: [try record()], store: try store(queue: true), permission: .on,
+                                    registered: true)
+        case .settingsNotificationsOff:
+            model.showForScreenshot(records: [try record()], store: try store(queue: true), permission: .off)
+        case .queueWaiting:
+            model.showForScreenshot(records: [try record()], store: try store(queue: true, waitingApproval: true))
+        case .queueEmpty:
+            model.showForScreenshot(records: [try record()], store: try store(queue: false))
+        case .libraryNotMeasured, .learningNotMeasured:
+            model.showForScreenshot(records: [try record()], store: try store(queue: true, measured: false))
+        case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings, .widgetSmall, .widgetRectangular: break
+        }
+        return model
     }
 }
 
@@ -119,7 +122,8 @@ enum ScreenshotStaging {
             "pcLastSeenAt": now - 120_000,
             "lastSentSeq": 0,
             "lastRecvSeq": 0,
-            "features": ["mailbox"],
+            "features": ["mailbox", "push"],
+            "attestKeyId": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
         ]
         return try JSONDecoder().decode(PairingRecord.self, from: JSONSerialization.data(withJSONObject: json))
     }

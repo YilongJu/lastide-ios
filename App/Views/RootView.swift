@@ -1,5 +1,6 @@
 import LastideKit
 import SwiftUI
+import UIKit
 
 enum AppTab: Hashable {
     case review, library, learning, settings
@@ -30,8 +31,11 @@ struct RootView: View {
             guard let rule = model.store.rules.first else { preconditionFailure("the demo library holds no rule") }
             libraryPath = [rule.id]
         case .learning, .learningNotMeasured: tab = .learning
-        case .settings, .settingsPaired, .pairingDisclosure, .pairingScan, .pairingWaiting, .pairingCode, .pairingFailed:
+        case .settings, .settingsPaired, .pairingDisclosure, .pairingScan, .pairingWaiting, .pairingCode, .pairingFailed,
+             .settingsNotificationsOn, .settingsNotificationsOff:
             tab = .settings
+        case .widgetSmall, .widgetRectangular:
+            preconditionFailure("the widget screens draw WidgetScreenshotView, not the tabs")
         }
         _tab = State(initialValue: tab)
         _queuePath = State(initialValue: queuePath)
@@ -39,6 +43,18 @@ struct RootView: View {
     }
 
     var body: some View {
+        if let launchError = model.launchError {
+            LaunchErrorView(model: model, text: launchError)
+        } else {
+            tabs
+                .alert(PushText.permissionQuestion, isPresented: $model.askNotifications) {
+                    Button(AppText.turnOn) { Task { await model.answerNotificationQuestion(turnOn: true) } }
+                    Button(AppText.notNow, role: .cancel) { Task { await model.answerNotificationQuestion(turnOn: false) } }
+                }
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $tab) {
             Tab("Review", systemImage: "tray.full", value: AppTab.review) {
                 QueueView(model: model, path: $queuePath, onPair: { tab = .settings })
@@ -59,6 +75,40 @@ struct RootView: View {
         } message: {
             Text(model.notice ?? "")
         }
+    }
+}
+
+/// The launch error of design section 6.2, such as a missing App Group container, with the diagnostics block.
+/// The app stops here before it reads another file or deletes a Keychain item.
+struct LaunchErrorView: View {
+    @Bindable var model: AppModel
+    let text: String
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Label(text, systemImage: "exclamationmark.triangle")
+                        .accessibilityIdentifier("launchError")
+                }
+                Section {
+                    Text(diagnosticsText)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
+                } footer: {
+                    Text("Copy this block into a support message.")
+                }
+                Section {
+                    Button("Copy") { UIPasteboard.general.string = diagnosticsText }
+                }
+            }
+            .navigationTitle("Lastide")
+        }
+    }
+
+    private var diagnosticsText: String {
+        model.diagnostics.text(build: model.facts.app, pairingState: "stopped at launch", relayOrigin: nil,
+                               push: model.pushFacts)
     }
 }
 

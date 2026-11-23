@@ -11,7 +11,8 @@ extension DeviceFacts {
             String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
         }
         let values = bundleValues(.main)
-        return DeviceFacts(deviceName: UIDevice.current.name, model: model, app: values.app, relayOrigins: values.relayOrigins)
+        return DeviceFacts(deviceName: UIDevice.current.name, model: model, app: values.app, relayOrigins: values.relayOrigins,
+                           pushEnvironment: values.pushEnvironment)
     }
 }
 

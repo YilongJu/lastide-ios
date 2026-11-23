@@ -16,12 +16,15 @@ struct DeviceFacts: Sendable, Equatable {
     let app: AppInfo
     /// The relay origins of the build setting `LASTIDE_RELAY_ORIGINS` (protocol section 3.2).
     let relayOrigins: [String]
+    /// The push environment of the build setting `LASTIDE_APS_ENVIRONMENT`, which also fills the `aps-environment`
+    /// entitlement (design section 4.3).
+    let pushEnvironment: PushEnvironment
 }
 
 extension DeviceFacts {
     /// Reads the app's version, build and relay origins from the main bundle. A build without them is broken, so the
     /// app stops.
-    static func bundleValues(_ bundle: Bundle) -> (app: AppInfo, relayOrigins: [String]) {
+    static func bundleValues(_ bundle: Bundle) -> (app: AppInfo, relayOrigins: [String], pushEnvironment: PushEnvironment) {
         guard let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, !version.isEmpty else {
             preconditionFailure("Info.plist lacks CFBundleShortVersionString")
         }
@@ -34,7 +37,10 @@ extension DeviceFacts {
         let origins = originsText.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
         precondition(!origins.isEmpty && origins.allSatisfy { !$0.isEmpty },
                      "LASTIDE_RELAY_ORIGINS must hold origins separated by single spaces")
-        return (AppInfo(version: version, build: build), origins)
+        guard let environmentText = bundle.object(forInfoDictionaryKey: "LastideAPNsEnvironment") as? String,
+              let environment = PushEnvironment(entitlement: environmentText)
+        else { preconditionFailure("LastideAPNsEnvironment is not development or production") }
+        return (AppInfo(version: version, build: build), origins, environment)
     }
 }
 
@@ -52,6 +58,13 @@ enum AppText {
     static let sampleRules = "Sample rules. Pair a PC to see your own."
     static let sampleNumbers = "Sample numbers. Pair a PC to see your own."
     static let scannerUnavailable = "This device has no camera scanner. Paste the pairing code instead."
+    static let storageError = "Lastide cannot open its App Group storage."
+    static let attestFailed = "Apple could not check this app right now. Try again in a minute."
+    static let notificationsRegistered = "Notifications registered"
+    static let showRuleText = "Show rule text in notifications"
+    static let showRuleTextNote = "Rule text shows on the lock screen. To hide it until you unlock the phone, set Show Previews to When Unlocked in iOS Settings, Notifications."
+    static let turnOn = "Turn On"
+    static let notNow = "Not Now"
 
     /// "last seen 2 min ago", or "online now" while the PC is online.
     static func lastSeen(online: Bool, at time: Int?, now: Int) -> String {
@@ -85,16 +98,36 @@ enum AppText {
     }
 }
 
-/// Facts for the diagnostics block of the Settings screen (protocol Table 23).
+/// Facts for the diagnostics block of the Settings screen (protocol Table 23, design section 6.8).
 struct Diagnostics: Equatable, Sendable {
     var lastCloseCode: Int?
     var lastError: String?
     var lastDroppedReason: String?
     var framesIgnored = 0
+    /// The relay's last answer to a `push-token` frame, such as "alert: ok" or "widgets: refused unsupported".
+    var lastPushTokenAnswer: String?
+    /// The error of `didFailToRegisterForRemoteNotificationsWithError`.
+    var lastRegistrationError: String?
+    /// The last lock-screen action and what the app did with it.
+    var lastNotificationAction: String?
+    /// What the moves of design section 6.2 did at this launch.
+    var launchMoves: String?
+    /// The number of Keychain items of the service `lastide.pairing` in the shared group, after the sweep.
+    var sharedKeychainItems: Int?
+
+    /// The push and attestation facts the block adds in phase 7.
+    struct PushFacts: Equatable, Sendable {
+        var environment: String
+        var permission: String
+        /// One line per paired PC: its name and whether it attested.
+        var attestations: [String]
+        /// The notification service extension's last outcome, peak memory and time, or nil before its first run.
+        var extensionRun: String?
+    }
 
     /// The block of text that the Copy button puts on the pasteboard.
-    func text(build: AppInfo, pairingState: String, relayOrigin: String?) -> String {
-        [
+    func text(build: AppInfo, pairingState: String, relayOrigin: String?, push: PushFacts) -> String {
+        var lines = [
             "Lastide \(build.version) (build \(build.build))",
             "Pairing: \(pairingState)",
             "Relay: \(relayOrigin ?? "none")",
@@ -102,6 +135,16 @@ struct Diagnostics: Equatable, Sendable {
             "Last error: \(lastError ?? "none")",
             "Last dropped reason: \(lastDroppedReason ?? "none")",
             "Frames ignored: \(framesIgnored)",
-        ].joined(separator: "\n")
+            "Push environment: \(push.environment)",
+            "Notifications: \(push.permission)",
+            "Last push-token answer: \(lastPushTokenAnswer ?? "none")",
+            "Last registration error: \(lastRegistrationError ?? "none")",
+            "Last notification action: \(lastNotificationAction ?? "none")",
+            "Extension's last run: \(push.extensionRun ?? "none")",
+            "Launch moves: \(launchMoves ?? "none")",
+            "Keychain items in the shared group: \(sharedKeychainItems.map(String.init) ?? "not read")",
+        ]
+        lines += push.attestations.map { "Attestation: \($0)" }
+        return lines.joined(separator: "\n")
     }
 }

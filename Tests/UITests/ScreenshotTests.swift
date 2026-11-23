@@ -87,6 +87,25 @@ final class ScreenshotTests: XCTestCase {
     func testPairingCheckCode() throws { try capture("pairingCode", waitFor: identifier("checkCode")) }
     func testPairingFailed() throws { try capture("pairingFailed", waitFor: identifier("pairingFailed")) }
 
+    // MARK: Phase 7: notifications and the widget
+
+    func testSettingsNotificationsOn() throws {
+        try capture("settingsNotificationsOn", waitFor: NSPredicate(format: "label CONTAINS %@", "Notifications registered")) { app in
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "notificationsState", "On"))
+        }
+    }
+    func testSettingsNotificationsOff() throws {
+        try capture("settingsNotificationsOff",
+                    waitFor: NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "notificationsState",
+                                         "Off in iOS Settings"))
+    }
+    func testWidgetSmall() throws {
+        try capture("widgetSmall", waitFor: NSPredicate(format: "label CONTAINS %@", "3 rules wait"))
+    }
+    func testWidgetRectangular() throws {
+        try capture("widgetRectangular", waitFor: NSPredicate(format: "label CONTAINS %@", "Pair a PC in Lastide"))
+    }
+
     // MARK: Large text
 
     func testQueueLarge() throws { try capture("queue-large", screen: "queue", waitFor: identifier("screen.queue"), large: true) }

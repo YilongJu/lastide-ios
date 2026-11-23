@@ -53,6 +53,9 @@ targets:
         # Export compliance (owner decision, 2026-11-20): the app uses standard encryption only through Apple's
         # CryptoKit, so it is exempt, and App Store Connect stops asking at each upload.
         ITSAppUsesNonExemptEncryption: false
+        # A count update launches the app in the background (design section 6.6).
+        UIBackgroundModes:
+          - remote-notification
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -70,8 +73,11 @@ targets:
   LastideNotifications:
     type: app-extension
     platform: iOS
+    # Only the opener, the App Group store and the Keychain store, so the extension stays far below its 24 MB.
     sources:
       - Extensions/Notifications
+      - App/Shared/GroupFiles
+      - App/Shared/Keychain
     dependencies:
       - package: LastideKit
     info:
@@ -92,8 +98,11 @@ targets:
   LastideWidget:
     type: app-extension
     platform: iOS
+    # The widget holds no Keychain group, so it does not compile the Keychain store.
     sources:
       - Extensions/Widget
+      - App/Shared/GroupFiles
+      - App/Shared/Views
     dependencies:
       - package: LastideKit
     info:
@@ -143,8 +152,13 @@ targets:
     platform: iOS
     sources:
       - Tests/HostedTests
+      # The push vector of protocol section 10.5, shared with the package tests.
+      - path: Packages/LastideKit/Tests/LastideKitTests/Vectors
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: Lastide
+      - package: LastideKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.hostedtests
