@@ -1,6 +1,6 @@
 name: TestFlight
 
-# Signs the app with the Apple Developer Program team and uploads the build to TestFlight.
+# Signs the app and its two extensions with the Apple Developer Program team and uploads the build to TestFlight.
 # Start it by hand on a commit whose Build workflow passed: gh workflow run TestFlight --ref main
 #
 # Repository secrets the workflow reads:
@@ -76,8 +76,27 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" | xcbeautify
       # The export takes the entitlements from the signatures of the archive, and the unsigned archive has none.
-      - name: Sign the app ad hoc with its entitlements
+      - name: Sign the app and its two extensions ad hoc with their entitlements
         run: bash scripts/ci/sign_with_entitlements.sh build/Lastide.xcarchive
+      # Design section 6.9: one export to a folder first, and a check of the three bundles' entitlements and build
+      # numbers. The upload below runs only when the check passes.
+      - name: Export once and check the entitlements of the three bundles
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportCheck.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive             -archivePath build/Lastide.xcarchive             -exportOptionsPlist "$RUNNER_TEMP/ExportCheck.plist"             -exportPath build/check             -allowProvisioningUpdates             -authenticationKeyPath "$ASC_KEY_PATH"             -authenticationKeyID "$ASC_KEY_ID"             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          bash scripts/ci/check_export.sh build/check/Lastide.ipa "$APPLE_TEAM_ID"
       - name: Export and upload to App Store Connect
         run: |
           set -euo pipefail

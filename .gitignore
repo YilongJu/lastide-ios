@@ -17,3 +17,6 @@ Local.xcconfig
 
 # XcodeGen writes the app Info.plist from project.yml.
 App/Info.plist
+
+# XcodeGen writes the extensions' Info.plist files from project.yml.
+Extensions/*/Info.plist

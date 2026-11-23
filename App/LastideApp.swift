@@ -69,6 +69,10 @@ struct LastideApp: App {
                 case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings: break
                 }
                 _model = State(initialValue: model)
+            } else if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+                // The host of the hosted tests: the tests reach the Keychain and the App Group themselves, so the
+                // app reads no file and no Keychain item of its own.
+                _model = State(initialValue: try AppModel(demoWith: facts, sockets: URLSessionSocketFactory()))
             } else {
                 _model = State(initialValue: try AppModel(facts: facts, storage: FileStorage.appSupport(),
                                                           secrets: KeychainStore(), sockets: URLSessionSocketFactory(),

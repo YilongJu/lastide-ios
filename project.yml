@@ -21,6 +21,13 @@ settings:
     # separated by single spaces. A Debug build adds its test origin in the git-ignored Local.xcconfig,
     # and the TestFlight workflow adds it from the secret LASTIDE_TEST_RELAY_ORIGIN.
     LASTIDE_RELAY_ORIGINS: "https://relay.example"
+  # The push environment of phase 7 (design section 6.1). One setting fills the `aps-environment` and App Attest
+  # entitlements and the Info.plist key that the app reports to the relay, so the three always agree.
+  configs:
+    Debug:
+      LASTIDE_APS_ENVIRONMENT: development
+    Release:
+      LASTIDE_APS_ENVIRONMENT: production
 targets:
   Lastide:
     type: application
@@ -31,6 +38,8 @@ targets:
       Debug: Config/Debug.xcconfig
     dependencies:
       - package: LastideKit
+      - target: LastideNotifications
+      - target: LastideWidget
     info:
       path: App/Info.plist
       properties:
@@ -38,6 +47,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LASTIDE_RELAY_ORIGINS: $(LASTIDE_RELAY_ORIGINS)
+        # The push environment the app reports in `push-token`, and the one sign_with_entitlements.sh checks.
+        LastideAPNsEnvironment: $(LASTIDE_APS_ENVIRONMENT)
         NSCameraUsageDescription: Lastide uses the camera to scan the pairing code that your PC shows.
         # Export compliance (owner decision, 2026-11-20): the app uses standard encryption only through Apple's
         # CryptoKit, so it is exempt, and App Store Connect stops asking at each upload.
@@ -55,6 +66,49 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: App/Lastide.entitlements
+  # The notification service extension (design section 6.4). It opens each alert notice in the App Group.
+  LastideNotifications:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Extensions/Notifications
+    dependencies:
+      - package: LastideKit
+    info:
+      path: Extensions/Notifications/Info.plist
+      properties:
+        CFBundleDisplayName: Lastide
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.notifications
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: Extensions/Notifications/Notifications.entitlements
+  # The widget extension (design section 6.7). It shows the count of rules that wait.
+  LastideWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Extensions/Widget
+    dependencies:
+      - package: LastideKit
+    info:
+      path: Extensions/Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Lastide
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.widget
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: Extensions/Widget/Widget.entitlements
   LastideTests:
     type: bundle.unit-test
     platform: iOS
@@ -83,6 +137,20 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.uitests
         GENERATE_INFOPLIST_FILE: "YES"
         TEST_TARGET_NAME: Lastide
+  # Tests that run inside the app, because the Keychain and the App Group need the app's entitlements.
+  LastideHostedTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/HostedTests
+    dependencies:
+      - target: Lastide
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lastide.app.hostedtests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Lastide.app/Lastide
+        BUNDLE_LOADER: $(TEST_HOST)
 schemes:
   Lastide:
     build:
@@ -92,6 +160,7 @@ schemes:
       config: Debug
       targets:
         - LastideTests
+        - LastideHostedTests
         - LastideUITests
     run:
       config: Debug

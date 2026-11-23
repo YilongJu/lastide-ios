@@ -104,6 +104,13 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/device \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | xcbeautify
+      # Design Table 21, check U6: the device build holds both extensions with their bundle ids and extension points.
+      - name: Check the extensions in the device build
+        run: python3 scripts/ci/check_bundles.py build/device/Build/Products/Release-iphoneos/Lastide.app
+      # Design section 8.5: the signing script and the export check run on an archive layout made from this build,
+      # signed ad hoc with a made-up Team ID. The good case must pass, and each plant must fail.
+      - name: Run the signing and export plants
+        run: bash scripts/ci/run_plants.sh build/device/Build/Products/Release-iphoneos/Lastide.app
       - name: Package the unsigned .ipa
         run: |
           set -euo pipefail
