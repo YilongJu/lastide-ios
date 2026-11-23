@@ -1,0 +1,69 @@
+{
+  "protocol": 1,
+  "suite": {
+    "kem_id": 32,
+    "kdf_id": 1,
+    "aead_id": 3
+  },
+  "generator": "@hpke/core 1.10.1, @hpke/dhkem-x25519 1.8.1, @hpke/chacha20poly1305 1.8.1; key schedule values from node:crypto",
+  "seeds": {
+    "pcKey": "8a4eda0dc8dace2c39ed9c43d86658f127ad730494cd27e5d1d398797848edba",
+    "phoneKey": "110230130f4082eae7889cdae18e66df2cf30d92fcbbda337346c81f734c1531"
+  },
+  "keys": {
+    "pcPrivateKey": "bc3cf3b646304ff1682d593f252207fde60c6b8099f9729ed2d0b4ece26e0ed2",
+    "pcPublicKey": "3addfe5ad260b8a1bde88aa9a613e7e40cb9e999aef3ac4dc22586553537534f",
+    "phonePrivateKey": "2bc2e2764f3c5eec4465362e17a9b80a5fc7f66efb2dcdaf14db72a86801ec38",
+    "phonePublicKey": "2f2a7773216bf7df6008d899bac8574e86c446a691636a7e844f388fc18a8440"
+  },
+  "ids": {
+    "pairingId": "342bc6d050646ad92d6c28a5814ec6a8",
+    "phoneId": "09adfb118353dacff001b65356118c27"
+  },
+  "notice": {
+    "kind": 4,
+    "mode": 2,
+    "flags": 0,
+    "slot": 0,
+    "seq": 1794992520000,
+    "ikmE": "342e2abb8492e777c61e744440b86c896b91f6ff09926bf0f2b0b4e11f9331de",
+    "info": "6c6173746964652f76312f7075736800342bc6d050646ad92d6c28a5814ec6a8",
+    "aad": "010400000000000000000000000000000000000009adfb118353dacff001b65356118c27000001a1ede43b401ddcc3ce69916510f87370a0657e7c8eeb1e0de268e1613e3c61d7401e56161b",
+    "enc": "1ddcc3ce69916510f87370a0657e7c8eeb1e0de268e1613e3c61d7401e56161b",
+    "sharedSecret": "ee4dd3a90635358b7d5cb3a9e817ab73202cee4a5595fdf25aea8a867f2b512c",
+    "key": "e1ca1eddd57169eb34c65a4291ed2995ba51fa51270c288bcf954889fa59a1f7",
+    "baseNonce": "586da007f0a9f152963a0ce0",
+    "exporterSecret": "a0db2120174dcc6fd1336295bbd37dbf66ac58123840b601d90dbd5c05ed6f5c",
+    "plaintext": "{\"type\":\"notice\",\"id\":\"IuMbu8WdGWuKHONvHHOO2g\",\"sentAt\":1794992520000,\"storeVersion\":43,\"queueCount\":2,\"draft\":{\"id\":\"d-0002\",\"changedAtStoreVersion\":43,\"draftKind\":\"new\",\"text\":\"Name each branch after its ticket.\",\"scope\":{\"scope\":\"everyProject\",\"kindOfWork\":null,\"projectNames\":[]}}}",
+    "ciphertext": "9a6bc7ec35692d4f57902ef77cb2b20a2e2f3d24a666647de34f7ff70892c4c2cff2af2271936b01f8368ed2d8fbdb74bb6fedccf3bde834a6018204c5e9f60ec96064d2bbda70ca774a9234b41f2fe630344c62429c634eff66c0367d71b43d88cf666c73ee18a4984c1c007a78188c4d7bd4b381a25545d02c852949ef78dd0174fdf4e74e46a982e70ae32eaeae5e2cc61716301feb3572310e1dba4b5a3d79fb6f29bc79a8d49292d7bcc9639fa628618a597e85717100d057e3e5d0efbb61ffb73cf38353065a03a2bc51edf01f1c3224fefffec9aafb524252f91549d5ece7e599db9da181633f5fe9a029eec136b87e0df5c76eb52fd593a8871cd92e7f3f76fe2ecb4f750dd22695b7c41fe1ed9034ccc3863be81504b8fe8f4dc37dae80ff64c1127cb76b28d858c1",
+    "envelope": "010400000000000000000000000000000000000009adfb118353dacff001b65356118c27000001a1ede43b401ddcc3ce69916510f87370a0657e7c8eeb1e0de268e1613e3c61d7401e56161b9a6bc7ec35692d4f57902ef77cb2b20a2e2f3d24a666647de34f7ff70892c4c2cff2af2271936b01f8368ed2d8fbdb74bb6fedccf3bde834a6018204c5e9f60ec96064d2bbda70ca774a9234b41f2fe630344c62429c634eff66c0367d71b43d88cf666c73ee18a4984c1c007a78188c4d7bd4b381a25545d02c852949ef78dd0174fdf4e74e46a982e70ae32eaeae5e2cc61716301feb3572310e1dba4b5a3d79fb6f29bc79a8d49292d7bcc9639fa628618a597e85717100d057e3e5d0efbb61ffb73cf38353065a03a2bc51edf01f1c3224fefffec9aafb524252f91549d5ece7e599db9da181633f5fe9a029eec136b87e0df5c76eb52fd593a8871cd92e7f3f76fe2ecb4f750dd22695b7c41fe1ed9034ccc3863be81504b8fe8f4dc37dae80ff64c1127cb76b28d858c1",
+    "envelopeSha256": "40192aa44940ed58457e4e2ebb9ced42c29ccd6259c1e81343b468e99d1e2153",
+    "e": "AQQAAAAAAAAAAAAAAAAAAAAAAAAJrfsRg1Paz_ABtlNWEYwnAAABoe3kO0Ad3MPOaZFlEPhzcKBlfnyO6x4N4mjhYT48YddAHlYWG5prx-w1aS1PV5Au93yysgouLz0kpmZkfeNPf_cIksTCz_KvInGTawH4No7S2PvbdLtv7czzveg0pgGCBMXp9g7JYGTSu9pwyndKkjS0Hy_mMDRMYkKcY07_ZsA2fXG0PYjPZmxz7hikmEwcAHp4GIxNe9SzgaJVRdAshSlJ73jdAXT99OdORqmC5wrjLq6uXizGFxYwH-s1cjEOHbpLWj15-28pvHmo1JKS17zJY5-mKGGKWX6FcXEA0Ffj5dDvu2H_tzzzg1MGWgOivFHt8B8cMiT-__7JqvtSQlL5FUnV7OflmdudoYFjP1_poCnuwTa4fg31x261L9WTqIcc2S5_P3b-LstPdQ3SJpW3xB_h7ZA0zMOGO-gVBLj-j03Dfa6A_2TBEny3ayjYWME"
+  },
+  "countUpdate": {
+    "kind": 4,
+    "mode": 2,
+    "flags": 0,
+    "slot": 1,
+    "seq": 1794992580000,
+    "ikmE": "360cd943703dd8c8c3d4f13c3c2fbb67dc2f1229c9fe3ad3d7d58f7d872b4512",
+    "info": "6c6173746964652f76312f7075736800342bc6d050646ad92d6c28a5814ec6a8",
+    "aad": "010400010000000000000000000000000000000009adfb118353dacff001b65356118c27000001a1ede525a0a0c7cd67991427eebecddf2b83c9e2a6ee18c9fb161b389d02c3b6df1a0ee81a",
+    "enc": "a0c7cd67991427eebecddf2b83c9e2a6ee18c9fb161b389d02c3b6df1a0ee81a",
+    "sharedSecret": "b33e187dd74543a0ab10a6795239aa91ccd6773ec8746f1f4eb6fd234cdeefea",
+    "key": "72497a0e35713d754154dc89c0d8c3f2b1c396325b84d05e601bbde0eada45b2",
+    "baseNonce": "0cc9b3eb61d2b31db49dcc65",
+    "exporterSecret": "e0a28e7b0559c4be4d76c075651cddb25fb12229e3013760b3b05bb9e737073b",
+    "plaintext": "{\"type\":\"count-update\",\"id\":\"tQ5lXKe8HPNmSkEKT4fRPg\",\"sentAt\":1794992580000,\"storeVersion\":44,\"queueCount\":0}",
+    "ciphertext": "4c7c0763fbdaec3b8536fca602f06c563c42f8bb8b6c21f2cc84f0f1ec484c4bed8f70b2efefa0b13a9bffaebb1ce7bf6e800bf5fee5a977b2e51f0a06e562053b72df058c94551200974ddb92e5259e800e9d3404bc30617fb58257ede5188df89096346a89c06487622f9c3ef3891c58bcd849f063bab322bb4811be",
+    "envelope": "010400010000000000000000000000000000000009adfb118353dacff001b65356118c27000001a1ede525a0a0c7cd67991427eebecddf2b83c9e2a6ee18c9fb161b389d02c3b6df1a0ee81a4c7c0763fbdaec3b8536fca602f06c563c42f8bb8b6c21f2cc84f0f1ec484c4bed8f70b2efefa0b13a9bffaebb1ce7bf6e800bf5fee5a977b2e51f0a06e562053b72df058c94551200974ddb92e5259e800e9d3404bc30617fb58257ede5188df89096346a89c06487622f9c3ef3891c58bcd849f063bab322bb4811be",
+    "envelopeSha256": "8ef1f886afe35fa861220ebdc12a90ea1b2647069641c505d8e52384eb5c11af",
+    "e": "AQQAAQAAAAAAAAAAAAAAAAAAAAAJrfsRg1Paz_ABtlNWEYwnAAABoe3lJaCgx81nmRQn7r7N3yuDyeKm7hjJ-xYbOJ0Cw7bfGg7oGkx8B2P72uw7hTb8pgLwbFY8Qvi7i2wh8syE8PHsSExL7Y9wsu_voLE6m_-uuxznv26AC_X-5al3suUfCgblYgU7ct8FjJRVEgCXTduS5SWegA6dNAS8MGF_tYJX7eUYjfiQljRqicBkh2IvnD7ziRxYvNhJ8GO6syK7SBG-"
+  },
+  "attest": {
+    "challenge": "27f035f3d251ad78c95b79a78cfefae4847b40c94c3c20bc608da5700b4cdfc7",
+    "pairRequestHash": "d27ef268dce5e1d6c1ae852d21c98561852206a0c85e5ebb7be355dc39dd6403",
+    "clientData": "6c6173746964652f76312f6174746573740027f035f3d251ad78c95b79a78cfefae4847b40c94c3c20bc608da5700b4cdfc7d27ef268dce5e1d6c1ae852d21c98561852206a0c85e5ebb7be355dc39dd6403",
+    "clientDataHash": "8c8f4a7431c29110ea67c7695e812af1fda3571eaf28bc0f40b706eaa43f2792"
+  }
+}

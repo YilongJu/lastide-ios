@@ -12,7 +12,7 @@ Three engineers build from this document alone. One writes the Swift package `La
 - A 76-byte header travels in clear with each message and is the AEAD's associated data. The relay routes on the header and cannot read or change the rest.
 - The relay is one Durable Object per PC at `/api/relay/<pairing id>`. Each socket proves its role in its first frame with a random room token. The relay stores only SHA-256 hashes of tokens.
 - A flag in the header marks the messages the relay may keep for 7 days while the recipient is offline. Evidence words never carry that flag, and they travel sealed to a one-time reply key.
-- Phase 7 adds push notifications and App Attest. Version 1 already reserves the envelope kind, the control frames and the welcome fields that phase 7 uses.
+- Phase 7 adds push notifications, a widget and App Attest (section 9). Version 1 code already handles the envelope kind, the control frames and the welcome fields that phase 7 uses.
 
 ## Contents
 
@@ -27,7 +27,7 @@ Three engineers build from this document alone. One writes the Swift package `La
 - [6. The relay](#6-the-relay)
 - [7. Sync messages](#7-sync-messages)
 - [8. Demo mode and the demo room](#8-demo-mode-and-the-demo-room)
-- [9. Phase 7 fit](#9-phase-7-fit)
+- [9. Phase 7: push, the widget and App Attest](#9-phase-7-push-the-widget-and-app-attest)
 - [10. Test vectors](#10-test-vectors)
 - [Sources](#sources)
 
@@ -82,7 +82,7 @@ Each term keeps one meaning in this document.
 | Acknowledgement | The PC's answer to one decision: applied or refused |
 | Evidence words | The redacted words of the corrections behind a draft. They reach the phone only while both devices are online |
 | Learning counts | The numbers and weekly series of the Learning screen |
-| Schema revision | The version of the sync message JSON. This document defines revision 2. Every revision 1 message is also a revision 2 message |
+| Schema revision | The version of the sync message JSON. This document defines revision 3. Each revision only adds to the one before. So every revision 1 or 2 message is also a revision 3 message |
 | HPKE | Hybrid Public Key Encryption, [RFC 9180][rfc9180] |
 | AEAD | Authenticated encryption with associated data. The cipher encrypts the plaintext and authenticates both the plaintext and the associated data |
 | Base mode | HPKE mode `0x00`. The recipient learns nothing about who sealed the message |
@@ -94,6 +94,14 @@ Each term keeps one meaning in this document.
 | Notification service extension | An app extension that iOS runs to change a push's content before it shows. Phase 7 uses it to decrypt |
 | App Group | A shared container that an app and its extensions can all read |
 | App Attest | Apple's service that proves a request comes from a real copy of the app on a real device |
+| Device token | The token iOS gives the app for its alert and background pushes. The relay stores it as `alert_token` |
+| Widget token | The token WidgetKit gives the widget extension for widget pushes. The relay stores it as `widget_token` |
+| Push environment | `sandbox` or `production`: the APNs host that a device token belongs to |
+| Alert notice | A kind 4 envelope in slot 0 that holds a `notice`. The relay sends it as an alert push |
+| Count update | A kind 4 envelope in slot 1 that holds a `count-update`. The relay sends it as a background push |
+| Widget push | A WidgetKit push that the relay sends by itself 30 s after an alert notice |
+| Provider token | The ES256 JSON Web Token that authorizes the relay at APNs |
+| Exempt room | A room whose creating account sat in the D1 table `attest_exempt` when the room was made. `RELAY_REQUIRE_ATTEST` does not apply to it |
 | DPAPI | The Windows Data Protection API. DPAPI encrypts data with keys tied to the person's Windows login |
 
 ## Notation and constants
@@ -120,6 +128,7 @@ Table 2. Version 1 fixes every size and limit, so the three programs agree witho
 | Largest plaintext | 262,052 bytes. The PC keeps snapshots under 240,000 bytes |
 | Largest control frame | 32,768 bytes of UTF-8 |
 | Largest push envelope (phase 7) | 2,800 bytes |
+| Push limits (phase 7) | 1 alert notice a minute and 1 count update in 20 minutes, per phone |
 | QR code life | 120 s from the moment the PC opens the ticket. A demo room's ticket lives up to 90 days |
 | Code entry window | 300 s from the moment the PC sends `pair-received` |
 | Wrong codes before the pairing ends | 3 |
@@ -131,7 +140,7 @@ Table 2. Version 1 fixes every size and limit, so the three programs agree witho
 | Phones per PC | 8 |
 | Rooms per account | 5 |
 | Room life without a PC connection | 90 days |
-| Sync schema revision | 2 |
+| Sync schema revision | 3 |
 
 ## 1. Threat model
 
@@ -153,14 +162,14 @@ Table 3. A party sees metadata at most unless it holds a private key. The check 
 
 | Party | Can | Cannot |
 | --- | --- | --- |
-| The relay, its operator, or anyone who takes over the Worker or its storage | See IP addresses, times and sizes of all frames. See the pairing id, device ids, envelope kinds, flags, slots and seq values. See which devices are online, and which account created the room. See the tokens in hello frames and the stored token hashes. Drop, delay, withhold or replay frames. Delete the mailbox or the room. In phase 7, push any notification text to a paired phone, because the Worker holds the APNs key | Read a pairing message or a sync message. Change a frame unnoticed, because the header is the AEAD's associated data. Pose as the PC or as a paired phone, because Auth mode checks static keys. Pair a phone without the QR code and the person's typed code. Search for a pair request that matches a code it saw. The code exists only after the PC commits to one request. Learn the check code or any HPKE key. Read evidence words at rest or from a recording. They never enter the mailbox, and the phone deletes their reply key. Get a held decision applied more than 8 days after the phone sent it. Make a notification action act on fields that the extension did not open |
+| The relay, its operator, or anyone who takes over the Worker or its storage | See IP addresses, times and sizes of all frames. See the pairing id, device ids, envelope kinds, flags, slots and seq values. See which devices are online, and which account created the room. See the tokens in hello frames and the stored token hashes. Drop, delay, withhold or replay frames. Delete the mailbox or the room. In phase 7, push any notification text to a paired phone, because the Worker holds the APNs key | Read a pairing message or a sync message. Change a frame unnoticed, because the header is the AEAD's associated data. Pose as the PC or as a paired phone, because Auth mode checks static keys. Pair a phone without the QR code and the person's typed code. Search for a pair request that matches a code it saw. The code exists only after the PC commits to one request. Learn the check code or any HPKE key. Read evidence words at rest or from a recording. They never enter the mailbox, and the phone deletes their reply key. Get a held decision applied more than 8 days after the phone sent it. Make a notification action act on fields that the extension did not open. Make an action act under text that the extension did not set |
 | A network attacker between a device and the relay | See that a device talks to the relay, when, and how much. Block traffic | Read hello frames or envelopes, because TLS covers them. With a trusted root certificate on the device, the attacker gets the relay's view above and nothing more |
 | Someone who photographs the QR code | Within 120 s, open the pairing socket before the person's phone does. That stops the person's pairing, and the person starts again with a new code. Seal messages to the PC key at any time | Complete a pairing. The PC answers one pair request per code. The person's phone shows a code only after the PC answers that phone's own request. A code that the person types matches the attacker's request at most 3 times in 1,000,000 per QR code. Use the ticket after 120 s, or after a phone used it. Join the room, because they lack a token. Get a sealed message accepted. The PC opens only pair requests that answer its open QR code, and Auth-mode messages from paired phones |
 | Someone who finds a lost phone, without its passcode | Read notification text on the lock screen in phase 7, unless the person hides previews in iOS settings | Read the cached data, because its files open only while the phone is unlocked. Read the keys while the phone has not been unlocked since its last restart. After the first unlock, the system can read the keys until the next restart. The phase 7 extension needs that to decrypt on a locked phone. Approve or delete from the lock screen, because both actions require an unlocked device |
 | Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a project file that git may track: a file from before the PC kept its rule files out of git, or the project's own `CLAUDE.md` or `AGENTS.md`. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
 | Anyone who holds a revoked phone's keys and token | Read what the phone stored before the revoke. Open the envelopes it recorded before the revoke, except evidence words | Connect, because the relay deleted its token hash. The phone bridge repeats `remove-phone` until the relay confirms it. Receive new messages, because the PC stopped sealing to its key and the relay deleted its mailbox. Get a frame accepted, because the PC deleted its phone key. Pair again without a new QR code on the PC |
 | Anyone who knows the pairing id, such as a QR code viewer or a revoked phone | Open sockets to the room that wait for `hello`. Each such socket closes the oldest waiting socket when the room's limit is reached | Join the room, because joining needs a token or an open ticket. Hold a waiting socket for more than 10 s. Hold more than 2 waiting sockets from one client address |
-| APNs (phase 7) | See the device token, the time and the size of each push | Read the push body, because the PC seals it to the phone key |
+| APNs (phase 7) | See the device token, the time and the size of each push. See the clear envelope header inside `lastide.e`: both device ids, the slot and the seq. The seq is about the PC's clock in ms. See the phone's device id in `thread-id` and `apns-collapse-id` | Read the push body, because the PC seals it to the phone key |
 
 ### 1.3 Out of scope
 
@@ -175,7 +184,7 @@ Table 3. A party sees metadata at most unless it holds a private key. The check 
 - Auth mode allows key-compromise impersonation ([RFC 9180, section 9.1.1][rfc9180]). A thief of a recipient's private key can forge Auth-mode messages to that recipient. That thief already reads everything sent to the recipient, so the design accepts the risk.
 - The relay learns the metadata in Table 3.
 - An outsider who knows the pairing id and controls many client addresses can delay connections. Each new waiting socket closes the oldest one, and the relay cannot tell a device's socket from an outsider's before `hello`. A device sends `hello` at once, so the outsider must open sockets faster than a device's first frame arrives.
-- In phase 7 a takeover of the Worker can push any notification text, because the Worker holds the APNs key. The extension and the actions still act only on fields that the extension opened (section 9.1).
+- In phase 7 a takeover of the Worker can push any notification text, because the Worker holds the APNs key. The actions still act only on an envelope that the app opens again, under the extension's text (section 9.4).
 
 ### 1.5 Facts for the export classification
 
@@ -218,7 +227,7 @@ Phone. The phone stores its private key and its phone token as Keychain items:
 - Value: the raw 32 bytes, from `rawRepresentation` for the key.
 - `kSecAttrAccessible` = `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. The items open after the first unlock until the next restart. The notification service extension needs that in phase 7, because it decrypts while the phone is locked. The items do not move to a new device.
 - `kSecAttrSynchronizable` = false, so the items stay out of iCloud Keychain.
-- Phase 7 sets `kSecAttrAccessGroup` to the keychain access group that the app shares with its extension.
+- Phase 7 moves the items into the keychain access group `<Team ID>.dev.lastide.app.shared`. Only the app and its notification service extension hold that group, and the widget does not. Every query from then on names that group.
 
 The Secure Enclave cannot hold the phone key. CryptoKit's `SecureEnclave` offers `P256`, `MLKEM768`, `MLKEM1024`, `MLDSA65` and `MLDSA87` types, and it does not offer an X25519 type. The App Attest key of phase 7 does live in the Secure Enclave, because App Attest makes it there.
 
@@ -429,7 +438,7 @@ Table 8. After pairing, the PC holds one record per phone and the phone holds on
 | Relay | Phone row | Same | Device id, SHA-256 of the phone token, times |
 | Worker | Room record | D1 table `relay_rooms`, section 6.1 | Pairing id, account id, creation time, the PC's last connection day, deletion time |
 
-The cache and the outbox open only while the phone is unlocked. The app reads them in the foreground. The app keeps the outbox in memory while it sends decisions in the background (section 6.8). Phase 7 moves `pairings.json` into the App Group container, so the notification service extension can read it on a locked phone.
+The cache and the outbox open only while the phone is unlocked. The app reads them in the foreground. The app keeps the outbox in memory while it sends decisions in the background (section 6.8). Phase 7 moves `pairings.json` into the App Group container `group.dev.lastide.app`. The notification service extension then reads it on a locked phone. The app makes both moves at the first launch of a phase 7 build, before it reads another file.
 
 The app sets `isExcludedFromBackup` on `pairings.json`, the cache and the outbox, because the Keychain items never move to another device. The app sets the flag again after each write, because an atomic file replace can reset it. At each launch the app checks each record in `pairings.json` against its Keychain items. A record without both items reads "Pair this phone again", and the app removes it after the person confirms. The app deletes Keychain items under the service `lastide.pairing` that no record names. That case follows a delete and a new install of the app.
 
@@ -496,7 +505,7 @@ Table 11. Each kind fixes its direction, its HPKE mode and its info string.
 | `0x01` | Pair request | New phone, PC | Base | None | `INFO_PAIR_REQUEST` | 0 | 0 | Socket of role `pairing` |
 | `0x02` | Pair reply | PC, new phone | Auth | PC key | `INFO_PAIR_REPLY` | 0 | 1 for `pair-received`; 0 for `pair-accept` and `pair-refuse` | Socket, to a `pairing` socket |
 | `0x03` | Message | PC and phone, both ways | Auth | The sender's key | `INFO_MESSAGE` | Table 20 | Table 20 | Socket and mailbox |
-| `0x04` | Push, phase 7 | PC, phone | Auth | PC key | `INFO_PUSH` | 0 | 0 | APNs only; the relay never forwards it on a socket |
+| `0x04` | Push, phase 7 | PC, phone | Auth | PC key | `INFO_PUSH` | 0 | 0 for `notice`; 1 for `count-update` | APNs only; the relay never forwards it on a socket |
 
 The recipient's key is its static key, with one exception. An `evidence` message carries REPLY_KEY and is sealed to the reply key that its `evidence-request` named (section 7.2). The phone opens it with that reply key's private part.
 
@@ -532,7 +541,7 @@ The receiver runs these checks in this order. Steps 1 to 5 drop the frame silent
 
 1. The frame is binary, at least 92 bytes and at most 262,144 bytes.
 2. `version` is 1. `kind` and `flags` hold values that this document defines.
-3. `recipient` is the receiver's own device id. This procedure covers kind 3. Section 4.3 handles kinds 1 and 2, and section 9.1 handles kind 4. The PC takes kind 3 only from a paired phone that the person has not revoked, and never with REPLY_KEY. The phone takes kind 3 only from the PC's device id. A phone refuses kind 4 on a socket.
+3. `recipient` is the receiver's own device id. This procedure covers kind 3. Section 4.3 handles kinds 1 and 2, and section 9.4 handles kind 4. The PC takes kind 3 only from a paired phone that the person has not revoked, and never with REPLY_KEY. The phone takes kind 3 only from the PC's device id. A phone refuses kind 4 on a socket.
 4. `seq` is greater than `lastRecvSeq` for that sender. Otherwise the receiver sends `received` with `upTo` set to that `lastRecvSeq`, and stops.
 5. The receiver sets up HPKE with the mode, the info string and the sender's static public key from Table 11. The recipient key is the receiver's static key. With REPLY_KEY, the phone tries its waiting reply keys instead, newest first. The receiver opens the ciphertext with the 76-byte header as associated data. When the open throws, processing stops here.
 6. The plaintext is valid UTF-8 JSON, and its `type` is defined at the receiver's schema revision. The message matches the schema of section 7.3 for its `type`.
@@ -652,7 +661,7 @@ Table 13. The relay answers five requests, and the fifth arrives in phase 7.
 | `GET /api/relay` | Lastide Settings and the account page | `Authorization: Bearer <account session token>` | `200 {"rooms": [{"pairingId": "<base64url>", "createdAt": <time>, "pcLastSeenAt": <time or null>}]}` with the account's live rooms; `401` without a valid session |
 | `DELETE /api/relay/<pairing id>` | The account that created the room, from the website or the desktop window | `Authorization: Bearer <account session token>` | `204`; `404` when no live room has that id or another account created it |
 | `GET /api/relay/<pairing id>` with `Upgrade: websocket` | PC and phones | `Sec-WebSocket-Protocol: lastide-relay.1` | `101` with `Sec-WebSocket-Protocol: lastide-relay.1`; for a deleted room, `101` and then close 4404 after the device's first frame or after 2 s; `404` when no room ever had that id; `426` without the upgrade or the subprotocol; `429` when closed sockets from the client's address hold its 2 places (section 6.2) |
-| `POST /api/relay/<pairing id>/frames`, phase 7 | Phone, from a notification action | `Lastide-Device: <device id, base64url>`; `Content-Type: application/octet-stream`; body: the 32-byte phone token, then one envelope | `202 {"stored": true, "seq": <seq>}` or `202 {"delivered": true, "seq": <seq>}`; `401`; `413` over 262,176 bytes. A version 1 relay answers `404 {"error": "unsupported"}` |
+| `POST /api/relay/<pairing id>/frames`, phase 7 | Phone, from a notification action, while no socket to that room is open | `Lastide-Device: <device id, base64url>`; `Content-Type: application/octet-stream`; `Content-Length` of 124 to 262,176 and no `Transfer-Encoding`; body: the 32-byte phone token, then one kind 3 envelope with MAILBOX | `202 {"stored": true, "seq": <seq>}`, or a fixed refusal of section 6.14. While phase 7 is off, `404 {"error": "unsupported"}` |
 
 The Worker checks the account session the same way the gateway does: Better Auth's `getSession` on the bearer token. The Worker keeps one D1 table of rooms:
 
@@ -665,17 +674,20 @@ CREATE TABLE IF NOT EXISTS relay_rooms (
   deleted_at      INTEGER
 );
 CREATE INDEX IF NOT EXISTS relay_rooms_user ON relay_rooms (user_id);
+CREATE TABLE IF NOT EXISTS attest_exempt (user_id TEXT PRIMARY KEY);   -- phase 7, section 9.6
 ```
 
-A deleted room keeps its row with `deleted_at` set. That row stops any account from taking over a pairing id that old QR codes and phone records hold. The room cap counts the rows whose `deleted_at` is null. The relay's module exports these two statements as `relayTables`, and `/api/migrate` runs them after `gatewayTables`.
+A deleted room keeps its row with `deleted_at` set. That row stops any account from taking over a pairing id that old QR codes and phone records hold. The room cap counts the rows whose `deleted_at` is null. The relay's module exports these three statements as `relayTables`, and `/api/migrate` runs them after `gatewayTables`. Only the live checks write `attest_exempt`.
 
-The Worker reaches the room with `env.RELAY.idFromName(pairingId)`. The Worker forwards the upgrade request with `stub.fetch(request)`. For the account requests, the Worker calls the room's RPC methods `create(pairingId, creatorUserId, pcTokenHash, demo)` and `destroy()`. `pcTokenHash` is a 32-byte `ArrayBuffer`, and `demo` is a boolean. The room reaches D1 through the `DB` binding in its own `env`. The room writes `pc_last_seen_at` at most once a day, and it sets `deleted_at` when it deletes itself.
+The Worker reaches the room with `env.RELAY.idFromName(pairingId)`. The Worker forwards the upgrade request with `stub.fetch(request)`. For the account requests, the Worker calls the room's RPC methods `create(pairingId, creatorUserId, pcTokenHash, demo, attestExempt)` and `destroy()`. `pcTokenHash` is a 32-byte `ArrayBuffer`. `demo` is a boolean, and so is `attestExempt`, which is true when `attest_exempt` lists the account. For `/frames` the Worker calls `postFrame(device, body, address)` (section 6.14). The room reaches D1 through the `DB` binding in its own `env`. The room writes `pc_last_seen_at` at most once a day, and it sets `deleted_at` when it deletes itself.
 
 Before the Worker forwards an upgrade, it reads `relay_rooms`. When no row has the pairing id, the Worker answers 404 itself. A random pairing id therefore starts no Durable Object. When the row has `deleted_at` set, the Worker accepts the socket itself and answers 101. The Worker closes that socket with 4404 after the device's first frame, or after 2 s when no frame arrives. A deleted room therefore wakes no Durable Object either. A client whose socket API hides the HTTP status of a failed upgrade still learns that the room is gone. Electron's `net.WebSocket` is such a client.
 
 The Worker inserts the row before it calls `create`. When `create` throws, the Worker sets `deleted_at` on that row and answers 500. The row then counts neither for the cap nor as a live room. After `destroy()` answers a `DELETE`, the Worker also sets `deleted_at`. That covers a room whose storage holds no room row.
 
-The Durable Object binding takes a SQLite migration entry, `{"tag": "v1", "new_sqlite_classes": ["RelayRoom"]}`, because the site pins wrangler 4.86. The newer `exports` field needs a wrangler upgrade. A Worker that uses `exports` cannot return to `migrations`.
+The Durable Object binding takes a SQLite migration entry, `{"tag": "v1", "new_sqlite_classes": ["RelayRoom"]}`, because the site pins wrangler 4.86. Phase 7 adds `{"tag": "v2", "new_sqlite_classes": ["ApnsTokens"]}` and its binding `APNS_TOKENS` (section 9.1). The newer `exports` field needs a wrangler upgrade. A Worker that uses `exports` cannot return to `migrations`.
+
+While the relay holds a partial set of its push settings, every request under `/api/relay` answers `500 {"error": "pushConfig"}` (section 9.1).
 
 ### 6.2 Opening a socket
 
@@ -710,7 +722,7 @@ Table 15. The relay reads control frames and never reads envelopes.
 | `op` | Direction | Fields | Meaning |
 | --- | --- | --- | --- |
 | `hello` | Device to relay | Table 14 | The first frame of every socket |
-| `welcome` | Relay to device | `v`: 1; `role`; `device`: the socket's device id, or null for `pairing`; `features`: list; `pcOnline`: boolean, for `phone` and `pairing`; `pcLastSeenAt`: time or null, for `phone`; `phonesOnline`: list of device ids, for `pc`; `mailbox`: count of envelopes about to follow; `attestChallenge`: base64url of 32 bytes, phase 7 only | The relay accepted the `hello`. Version 1 relays send `features` `["mailbox"]` |
+| `welcome` | Relay to device | `v`: 1; `role`; `device`: the socket's device id, or null for `pairing`; `features`: list; `pcOnline`: boolean, for `phone` and `pairing`; `pcLastSeenAt`: time or null, for `phone`; `phonesOnline`: list of device ids, for `pc`; `mailbox`: count of envelopes about to follow; `attestChallenge`: base64url of 32 bytes, for a `pairing` socket while `features` lists `push` | The relay accepted the `hello`. `features` lists `mailbox`, and `push` while phase 7 is on (section 9.1) |
 | `presence` | Relay to device | `device`; `online`: boolean | A peer came online or went offline. The PC hears about phones, and a phone hears about the PC |
 | `open-pairing` | PC to relay | `rid`; `ticketHash`: base64url of SHA-256 of the ticket; `ttlMs`: integer from 1 to 120000; `reusable`: boolean, true only in a demo room | Opens one ticket. A new ticket replaces an open one and closes its pairing sockets with 4401. A demo room accepts `ttlMs` up to 7,776,000,000 (90 days) |
 | `close-pairing` | PC to relay | `rid`; `ticketHash` | Deletes the ticket and closes its pairing sockets with 4401 |
@@ -719,11 +731,12 @@ Table 15. The relay reads control frames and never reads envelopes.
 | `delete-room` | PC to relay | `rid` | Deletes the room (section 6.10) |
 | `received` | PC or phone to relay | `from`: sender device id; `upTo`: seq | The device processed every envelope from `from` up to `upTo`. The relay deletes those mailbox rows |
 | `ok` | Relay to device | `rid` | The control frame with that `rid` took effect |
-| `refused` | Relay to device | `rid`; `code`: `badRequest`, `tooManyPhones`, `deviceInUse`, `unknownDevice` or `unsupported` | The control frame with that `rid` did not take effect. `rid` is null when the frame carried no valid `rid`, as `received` and `attest` do. A frame of a known `op` with a missing or invalid field gets `badRequest` |
+| `refused` | Relay to device | `rid`; `code`: `badRequest`, `tooManyPhones`, `deviceInUse`, `unknownDevice`, `unsupported` or `notAttested` | The control frame with that `rid` did not take effect. `rid` is null when the frame carried no valid `rid`, as `received` does. A frame of a known `op` with a missing or invalid field gets `badRequest` |
 | `stored` | Relay to sender | `to`; `seq` | The relay put the envelope in the mailbox |
-| `dropped` | Relay to sender | `to`; `seq`; `reason`: `offline`, `mailboxFull`, `unknownRecipient`, `noPushToken` or `rateLimited` | The relay discarded the envelope |
-| `push-token`, phase 7 | Phone to relay | `rid`; `pushType`: `alert` or `widgets`; `token`: hex; `env`: `sandbox` or `production` | Stores the phone's APNs device token |
-| `attest`, phase 7 | Pairing socket to relay | `keyId`: the key identifier as App Attest returns it; `attestation`: base64url; `pairRequestHash`: base64url of `h1` | Proves a real app instance before the pair request (section 9.4) |
+| `dropped` | Relay to sender | `to`; `seq`; `reason`: `offline`, `mailboxFull`, `unknownRecipient`, `noPushToken`, `rateLimited`, `pushRefused` or `pushUnavailable`; after an APNs answer, `apnsStatus` and `apnsReason` | The relay discarded the envelope. Section 9.3 gives the push reasons |
+| `pushed`, phase 7 | Relay to PC | `to`; `seq` | APNs accepted the push of that kind 4 envelope |
+| `push-token`, phase 7 | Phone to relay | `rid`; `pushType`: `alert` or `widgets`; `token`: lowercase hex of 16 to 100 bytes, or null; `env`: `sandbox` or `production` | Stores the phone's APNs token of that type, or removes it when `token` is null (section 9.2) |
+| `attest`, phase 7 | Pairing socket to relay | `rid`; `keyId`: the key identifier as App Attest returns it, standard base64 of 32 bytes; `attestation`: base64url; `pairRequestHash`: base64url of `h1` | Proves a real app instance before the pair request (section 9.6). The relay answers `ok`, or closes the socket with 4402 |
 
 Ping. The text frame `ping`, exactly 4 bytes, gets the text frame `pong` from the room's auto-response. The room answers it with `setWebSocketAutoResponse` and stays hibernated. Each device sends `ping` every 30 s and reconnects when `pong` does not arrive within 10 s. A protocol-level ping frame also gets an automatic pong, but does not count as a `ping`.
 
@@ -755,7 +768,8 @@ The relay reads the 76-byte header and nothing after it. The relay runs these ch
 4. Bits 2 to 7 of `flags` are clear: else 4400.
 5. `seq` is at least 1 and below $2^{53}$: else 4400.
 6. The flags and the slot fit the kind: else 4400.
-   - Kind 1 and kind 4: flags 0 and slot 0.
+   - Kind 1: flags 0 and slot 0.
+   - Kind 4: flags 0, and slot 0 or 1. A kind 4 envelope over 2,800 bytes closes the socket with 4413.
    - Kind 2: flags 0, and slot 0 or 1.
    - Kind 3 with MAILBOX: REPLY_KEY clear, and slot 0 to 2.
    - Kind 3 without MAILBOX: slot 0.
@@ -767,6 +781,7 @@ Then the relay routes the envelope:
 - A kind 3 envelope with MAILBOX goes into the mailbox first (section 6.9). The relay answers `stored` and forwards it when the recipient is live.
 - A kind 3 envelope from the PC to a device id without a phone row gets `dropped` with reason `unknownRecipient`. A revoke can race with a PC's send, so the relay does not close the socket.
 - Any other envelope goes to the recipient's socket when the recipient is live. Otherwise the relay answers `dropped` with reason `offline`. A kind 2 envelope whose recipient has no pairing socket counts as offline.
+- A kind 4 envelope goes to APNs and never to a socket. The relay answers `pushed` or `dropped` (section 9.3).
 - Phones never learn about each other. The relay does not tell one phone that another phone exists.
 
 ### 6.6 Limits
@@ -784,7 +799,8 @@ Table 16. The relay enforces fixed limits, and a device that passes one gets a c
 | Pairing sockets | 4 per room | A new pairing socket closes the oldest with 4408. Only a demo room's reusable ticket admits more than one |
 | Pairing socket life | 600 s | Closes with 4408 |
 | Mailbox | 1,000 envelopes and 4 MiB for each sender and recipient pair | `dropped` with `mailboxFull` |
-| Push envelopes, phase 7 | 1 per phone per 60 s | `dropped` with `rateLimited` |
+| Push envelopes, phase 7 | 2,800 bytes. 1 alert notice per phone per 60 s, and 1 count update per phone per 20 minutes | Closes with 4413 above the size; `dropped` with `rateLimited` above a rate |
+| `/frames` requests, phase 7 | 120 a minute per room and 30 per client address, before any token check. 30 a minute per authenticated phone | HTTP 429 |
 | Rooms | 5 live rooms per account | HTTP 429 on `POST` |
 
 The Durable Object accepts WebSocket messages up to 32 MiB. The 256 KiB envelope limit is the relay's own choice. The rate counter lives in memory and restarts when the room wakes from hibernation.
@@ -798,7 +814,7 @@ Table 17. Every close code tells the device what to do next.
 | 1000 | Normal | The relay closes a pairing socket after `pair-accept` or `pair-refuse`, or a device leaves | Stops using the socket |
 | 4400 | Bad frame | A frame before `hello`, malformed JSON, an unknown `op` on a waiting socket, or an envelope that fails checks 1 to 6 of section 6.5 | Logs the code; a phone shows it in the diagnostics block |
 | 4401 | Unauthorized | Unknown token, unknown device, or a ticket that is wrong, used or expired | A phone with a pairing shows "This PC no longer accepts this phone." A pairing socket shows "This code no longer works. Show a new code on your PC." |
-| 4402 | Attestation refused, phase 7 | App Attest did not verify | Shows "Pairing needs the App Store or TestFlight build of Lastide." |
+| 4402 | Attestation refused, phase 7 | An attestation did not verify or broke the relay's policy. A pair request did not match its attestation. `RELAY_REQUIRE_ATTEST` refused a phone without one (section 9.6) | Shows "Pairing needs the App Store or TestFlight build of Lastide." |
 | 4403 | Forbidden | An envelope that fails check 7 or 8 of section 6.5, or a control frame the role may not send | Logs the code; the sender has a bug |
 | 4404 | Room gone | The room was deleted, while the socket was open or before it opened (section 6.1) | The phone offers to remove the PC. The PC follows the "Room gone" row of Table 19 |
 | 4408 | Timeout | No `hello` in 10 s, a newer waiting socket, a fifth pairing socket, no `ping` for 90 s, or a pairing socket older than 600 s | Reconnects. A pairing socket shows "The connection timed out. Show a new code on your PC." |
@@ -883,7 +899,7 @@ The site's compatibility date is later than 2026-02-24, so `deleteAll()` also de
 The room uses the WebSocket Hibernation API. An idle room then does not pay for duration while its sockets stay open.
 
 - The room accepts each socket with `ctx.acceptWebSocket(server)` and no tags. Tags are fixed at accept, and the role is known only after `hello`.
-- Each socket's state lives in its attachment, set with `serializeAttachment` and read with `deserializeAttachment`. The attachment holds `state`, `device` and `openedAt`. `state` is `waiting`, `pc`, `phone` or `pairing`. A waiting socket adds `addrHash`. A pairing socket adds `ticketHash`, and phase 7 adds `pairRequestHash`. The attachment stays far below the 16,384-byte limit.
+- Each socket's state lives in its attachment, set with `serializeAttachment` and read with `deserializeAttachment`. The attachment holds `state`, `device` and `openedAt`. `state` is `waiting`, `pc`, `phone` or `pairing`. A waiting socket adds `addrHash`. A pairing socket adds `ticketHash`. In phase 7 it also adds `challenge` and `attestSent`. After a good `attest` it adds the attestation, about 300 bytes. That is `pairRequestHash`, the key id, the public key, the environment, the category and the bundle version. The attachment stays far below the 16,384-byte limit.
 - The room finds peers by iterating `ctx.getWebSockets()` and reading attachments. A room holds at most 1 PC, 8 phones, 4 waiting sockets and 4 pairing sockets. Closed sockets stay in the list until their clients answer (section 6.2).
 - In-memory state is lost when the room hibernates. The room keeps only the rate counter in memory.
 - `ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"))` answers `ping` without waking the room. `ctx.getWebSocketAutoResponseTimestamp(ws)` gives the time of the last such answer on each socket, or null.
@@ -898,7 +914,7 @@ The room uses the WebSocket Hibernation API. An idle room then does not pay for 
 
 ### 6.12 What the relay stores
 
-The room keeps four SQLite tables. `ctx.storage.sql.exec` binds an `ArrayBuffer` to a `BLOB` column.
+The room keeps six SQLite tables. `ctx.storage.sql.exec` binds an `ArrayBuffer` to a `BLOB` column.
 
 ```sql
 CREATE TABLE IF NOT EXISTS room (
@@ -938,13 +954,77 @@ CREATE TABLE IF NOT EXISTS mailbox (
 );
 CREATE INDEX IF NOT EXISTS mailbox_by_recipient ON mailbox (recipient, row);
 CREATE INDEX IF NOT EXISTS mailbox_by_slot ON mailbox (recipient, sender, slot);
+CREATE TABLE IF NOT EXISTS phone_state (    -- phase 7
+  device                TEXT PRIMARY KEY,   -- base64url, 22 characters
+  last_push_at          INTEGER,            -- receive time of the last slot 0 kind 4 the relay accepted
+  last_count_push_at    INTEGER,            -- the same for slot 1
+  widget_due_at         INTEGER,            -- when the widget push is due, or null
+  attest_public_key     BLOB,               -- 65 bytes, the X9.62 uncompressed P-256 point
+  attest_env            TEXT,               -- 'production', or 'development' while RELAY_ATTEST_DEV is on
+  attest_category       INTEGER,            -- the validation category
+  attest_bundle_version TEXT,               -- apple_bundle_version_01
+  attested_at           INTEGER
+);
+CREATE TABLE IF NOT EXISTS room_policy (    -- phase 7
+  id            INTEGER PRIMARY KEY CHECK (id = 1),
+  attest_exempt INTEGER NOT NULL            -- 1 when the creating account sat in attest_exempt
+);
+```
+
+`create()` makes the two phase 7 tables. A room from before phase 7 makes them before its first phase 7 use, and a room without a `room_policy` row is not exempt. `remove-phone` deletes the device's `phone_state` row with its phone row.
+
+The Durable Object `ApnsTokens` keeps one more table in its own storage, one row per push environment (section 9.1):
+
+```sql
+CREATE TABLE IF NOT EXISTS provider_token (
+  env       TEXT    PRIMARY KEY,           -- 'production' or 'sandbox'
+  key_id    TEXT    NOT NULL,
+  jwt       TEXT    NOT NULL,
+  issued_at INTEGER NOT NULL               -- ms
+);
 ```
 
 `pc_last_seen_at` holds the later of the PC's last `hello` and the close of its last socket. The relay does not store a plaintext, an HPKE key, a token, a ticket or a check code. A waiting socket's attachment holds 8 bytes of a keyed hash of its client address until `hello`. The key is `addr_key`, which never leaves the room. Client addresses appear otherwise only in the platform's own request logs.
 
 ### 6.13 What the relay logs
 
-The relay code logs close codes, frame counts and errors. The relay never logs a token, a ticket, an envelope, a control frame body, a request body or an APNs device token. The site enables Workers observability, so this rule covers every `console` call in the relay.
+The relay code logs close codes, frame counts and errors. The relay never logs a token, a ticket, an envelope, a control frame body or a request body. The relay also never logs an APNs device token, a widget token, a provider token or a key. A `fetch` to APNs that throws logs fixed text, because its message can hold the URL with the device token. A log line may hold an HTTP status, an APNs reason, a push type or a refusal code. It may also hold an attestation's environment and category. The site enables Workers observability with traces off, because a trace records each subrequest's URL. So this rule covers every `console` call in the relay.
+
+### 6.14 Frames from a notification action
+
+A notification action sends its decision through this route while the phone holds no socket to that room (section 9.4):
+
+```text
+POST /api/relay/<pairing id>/frames
+Lastide-Device: <phone device id, base64url, 22 characters>
+Content-Type: application/octet-stream
+Content-Length: 124 to 262,176
+Body: the 32-byte phone token, then one envelope of 92 to 262,144 bytes
+```
+
+1. The Worker checks the method, the path and the `Lastide-Device` header. A request without `Content-Length`, or with `Transfer-Encoding`, gets 400 before the Worker reads the body.
+2. A `Content-Length` above 262,176 gets 413, and one below 124 gets 400.
+3. The Worker reads the body through a reader that stops at 262,176 bytes. The bytes read must equal `Content-Length`, or the request gets 400.
+4. The Worker reads `relay_rooms` as the upgrade does. Then it calls the room's RPC `postFrame(device, body, address)` with the `CF-Connecting-IP` address.
+5. The room counts every request before any token check. It allows 120 a minute per room and 30 a minute per client address. The address counts by its `addrHash` (section 6.2).
+6. The room hashes the token and compares it in constant time. Only an authenticated request counts against the phone's 30 a minute.
+7. The envelope passes the header checks of section 6.5. It is kind 3 with MAILBOX and without REPLY_KEY, from the device to the PC.
+8. The room stores it in the mailbox as a frame from that phone. It forwards the envelope when the PC is live.
+
+The route answers with fixed codes:
+
+- `202 {"stored": true, "seq": <seq>}`: the envelope entered the mailbox. A live PC gets it at once.
+- `400 {"error": "badRequest"}`: a bad device id, a missing `Content-Length`, `Transfer-Encoding`, a short body, or a failed header check.
+- `401 {"error": "unauthorized"}`: no phone row for the device, or the token's SHA-256 differs.
+- `403 {"error": "forbidden"}`: not kind 3, MAILBOX clear, REPLY_KEY set, a recipient other than the PC, or a sender other than the device.
+- `403 {"error": "notAttested"}`: `RELAY_REQUIRE_ATTEST` is on, and the phone lacks an attestation (section 9.6).
+- `404 {"error": "noRoom"}`: no room ever had the pairing id.
+- `410 {"error": "roomGone"}`: the room was deleted.
+- `413 {"error": "tooLarge"}`: `Content-Length` over 262,176 bytes.
+- `429 {"error": "rateLimited"}`: over a limit of step 5 or step 6.
+- `507 {"error": "mailboxFull"}`: the pair already holds 1,000 envelopes or 4 MiB.
+
+While phase 7 is off, the route answers `404 {"error": "unsupported"}`. The rate counters live in memory, as the socket frame counter does. The token travels in the body, so request logs never hold it. The phone keeps a decision with any answer but 202 for its next connection. After a 410 the phone offers to remove the PC, and after `notAttested` it offers to pair again.
 
 ## 7. Sync messages
 
@@ -957,6 +1037,7 @@ The relay code logs close codes, frame counts and errors. The relay never logs a
 - The rule learning service raises the store version when the desktop app starts with a new schema revision. So two `queue` or `library` snapshots with equal store versions are equal.
 - The phone never shows full paths. Every project appears by its folder name alone, as `projectName` or `projectNames`.
 - Revision 2 adds three counts to `counts`: `draftingRunsToday`, `draftingRunCap` and `importRulesWaiting`. It also lets an evidence item of a review comment carry `agent: null` and `commentLabel`. The PC sends these only to a phone of revision 2 or later. A phone of revision 1 gets `counts` without the three fields and a draft without its review comment items.
+- Revision 3 adds the `count-update` message, a kind 4 envelope in slot 1 (section 9.3). The PC sends it only to a phone of revision 3 or later.
 - Ids of drafts and rules come from the rule store, and the phone treats them as opaque strings. Evidence ids are opaque strings that the PC assigns per change of a draft. They never contain a session id or a path.
 
 ### 7.2 Message list
@@ -980,6 +1061,7 @@ Table 20. Each sync message type fixes its direction, its flags and its slot.
 | `unpair` | Phone to PC | 3 | MAILBOX | 0 | The person removes the PC on the phone |
 | `error` | Both ways | 3 | None | 0 | A message that opened but could not be used (section 5.6) |
 | `notice`, phase 7 | PC to phone | 4 | None | 0 | A new draft while the phone is offline |
+| `count-update`, phase 7 | PC to phone | 4 | None | 1 | A count change while the phone is offline |
 
 The PC sends `queue`, `library` and `counts` to every paired phone. The PC sends `acknowledgement`, `evidence` and `error` only to the phone whose message they answer, which the envelope header's `sender` names.
 
@@ -1002,8 +1084,8 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://relay.example/schemas/lastide-sync-2.json",
-  "title": "Lastide sync messages, schema revision 2",
+  "$id": "https://relay.example/schemas/lastide-sync-3.json",
+  "title": "Lastide sync messages, schema revision 3",
   "oneOf": [
     { "$ref": "#/$defs/pairRequest" },
     { "$ref": "#/$defs/pairReceived" },
@@ -1019,7 +1101,8 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
     { "$ref": "#/$defs/evidenceRequest" },
     { "$ref": "#/$defs/unpair" },
     { "$ref": "#/$defs/error" },
-    { "$ref": "#/$defs/notice" }
+    { "$ref": "#/$defs/notice" },
+    { "$ref": "#/$defs/countUpdate" }
   ],
   "$defs": {
     "b64u16": { "type": "string", "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$" },
@@ -1411,6 +1494,15 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
           ]
         }
       }
+    },
+    "countUpdate": {
+      "type": "object", "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["storeVersion", "queueCount"],
+      "properties": {
+        "type": { "const": "count-update" },
+        "storeVersion": { "$ref": "#/$defs/storeVersion" },
+        "queueCount": { "$ref": "#/$defs/count" }
+      }
     }
   }
 }
@@ -1430,6 +1522,7 @@ Field notes that the schema cannot state:
 - `deviceName` is `UIDevice.current.name`, which reads "iPhone" from iOS 16 on without a special entitlement. `model` is the hardware model identifier from `utsname.machine`, for example "iPhone17,3". The PC shows both while the person names the phone.
 - `pcName` is the PC name from Lastide Settings, "My PC" by default, and never the Windows computer name. In phase 7 it becomes the notification title.
 - The PC shortens `notice.draft.text` until the push envelope fits in 2,800 bytes. When the draft does not fit even then, the PC sends `draft` as null.
+- `notice.queueCount` and `count-update.queueCount` hold the count that the phone's badge shows. That count is the drafts of the queue snapshot at the phone's revision, plus `omitted`.
 
 ### 7.4 Decisions: what the PC applies and refuses
 
@@ -1527,95 +1620,207 @@ Table 24. The demo room keeps the protocol and relaxes only the rules that need 
 - The relaxed rules are safe here, because the demo room holds synthetic data only. A stranger who pairs with it sees only the fixtures and changes only the scripted PC's copy.
 - The demo room lives on the production relay origin, so the app's built-in list of section 3.2 admits it.
 
-## 9. Phase 7 fit
+## 9. Phase 7: push, the widget and App Attest
 
-Phase 7 adds encrypted push, notification actions, a widget and App Attest. Version 1 code must follow the rules of section 9.5. Phase 7 then does not need a breaking change.
+Phase 7 adds encrypted push, notification actions, a widget and App Attest. The design `docs/DESIGN-phone-push-attest-20261123.md` in the Lastide workspace repository gives the reasons. Version 1 code follows section 9.7, so phase 7 needs no breaking change.
 
-### 9.1 Encrypted push
+### 9.1 The relay's push settings
 
-1. The phone registers its APNs device token with `push-token`, `pushType` `alert`. The relay accepts it only when `welcome` listed `push`.
-2. A draft may arrive while a phone is offline. The PC then seals a `notice` in a kind 4 envelope with `INFO_PUSH`. The PC sends it to the relay at most once a minute per phone.
-3. The relay base64url-encodes the envelope and posts this payload to APNs:
+The relay holds one topic-specific APNs key per environment. Apple limits such a key to the app's topics, so its tokens cannot push to the team's other apps. Four Worker secrets turn phase 7 on, and two more add the sandbox host:
 
-```json
-{
-  "aps": {
-    "alert": { "title": "Lastide", "body": "A rule waits for your review." },
-    "mutable-content": 1,
-    "category": "PROPOSED_RULE",
-    "thread-id": "<phone device id, base64url>"
-  },
-  "lastide": { "v": 1, "e": "<push envelope, base64url>" }
-}
-```
+- `APNS_PRODUCTION_KEY_P8`: the full text of the production key's `AuthKey_<key id>.p8` file. Required.
+- `APNS_PRODUCTION_KEY_ID`: that key's 10-character Key ID. Required.
+- `APPLE_TEAM_ID`: the 10-character Team ID, the token's `iss` and the first part of the App ID. Required.
+- `APP_BUNDLE_ID`: `dev.lastide.app`, the push topic and the second part of the App ID. Required.
+- `APNS_SANDBOX_KEY_P8` and `APNS_SANDBOX_KEY_ID`: the sandbox key. Optional, because only a Debug build installed from a Mac reports `sandbox`.
 
-Table 25. The relay sets five APNs headers for each push.
+The relay reads the settings once per isolate:
 
-| Header | Value |
-| --- | --- |
-| `apns-push-type` | `alert` |
-| `apns-priority` | `10` |
-| `apns-topic` | The app's bundle id |
-| `apns-collapse-id` | The phone's device id in base64url, 22 bytes, so all drafts of one PC fold into one notification |
-| `apns-expiration` | The relay's receive time of the envelope, in seconds, plus 86,400 |
+- Phase 7 is on while the four required secrets are set, and off while none is set.
+- Any other mix is a partial set. That covers some of the four, one sandbox name alone, and a sandbox pair while phase 7 is off. A value that breaks its rule also makes the set partial.
+- With a partial set, every request under `/api/relay` answers `500 {"error": "pushConfig"}`. The log names the settings and holds no value.
+- A key text holds one BEGIN PRIVATE KEY line and one END PRIVATE KEY line. The base64 between them, without white space, must be canonical. Web Crypto must import it as a PKCS#8 P-256 signing key.
+- The Key IDs and the Team ID match `^[A-Z0-9]{10}$`, and the two Key IDs differ. The bundle id matches `^[a-z0-9]+(\.[a-z0-9-]+)+$`.
+- `RELAY_REQUIRE_ATTEST` and `RELAY_ATTEST_DEV` are each unset or `on` (section 9.6). Any other value, or `on` while phase 7 is off, makes the set partial.
+- `welcome` lists `push` in `features` only while phase 7 is on.
+- `/api/health` adds `push` (`on`, `off` or `partial`) and the booleans `pushSandbox`, `attestRequired` and `attestDevelopment`. It never names a value.
 
-The payload stays under APNs' 4,096-byte limit. A 2,800-byte envelope takes 3,734 base64url characters, and the rest of the payload takes about 250 bytes.
-
-The relay signs its APNs token as an ES256 JWT with Web Crypto and renews it after 45 minutes. The `.p8` key, the Key ID and the Team ID are Worker secrets, with separate keys for Sandbox and Production.
-
-4. The notification service extension decodes `lastide.e` and checks kind 4. The extension finds the pairing whose phone id equals the header's recipient. The extension opens the envelope in Auth mode with the PC key and `INFO_PUSH`. The extension keeps `lastPushSeq` per pairing in the App Group. The extension drops a push whose `seq` is not above `lastPushSeq`. The extension does not touch `lastRecvSeq`, which belongs to the app's socket.
-5. When the open works, the extension sets the title to the PC's name and the body to `notice.draft.text`. The extension stores `queueCount` in the App Group. The extension then sets four `userInfo` keys: `lastidePairingId`, `lastideDraftId`, `lastideChangedAt` (the draft's `changedAtStoreVersion`) and `lastideStoreVersion` (the notice's `storeVersion`).
-6. When the open fails, the push is a replay, or the extension's time runs out, the extension shows fixed text from the app. The title reads "Lastide", and the body reads "Open Lastide to see what changed." The extension then does not set any `lastide` key in `userInfo`. When iOS does not run the extension at all, the relay's placeholder text shows.
-
-### 9.2 Actions from a notification
-
-Category `PROPOSED_RULE` carries three actions: Approve with `authenticationRequired`, Delete with `destructive` and `authenticationRequired`, and Open with `foreground`. Edit opens the app.
-
-The Approve and Delete handlers take the draft and the store version only from the extension's `userInfo` keys. The extension sets those keys only after a good open. Without them, both actions open the app instead. For Approve and Delete, the app builds a `decision` and seals it in a kind 3 envelope. The app sends the envelope with `POST /api/relay/<pairing id>/frames`. The request carries the device id in the `Lastide-Device` header. The phone token fills the body's first 32 bytes, so request logs never hold the token. The relay treats the envelope as a frame from that phone. The relay stores the decision in the mailbox and forwards it when the PC is live.
-
-### 9.3 Widget push
-
-The widget's push handler gives a second APNs token. The phone registers it with `push-token`, `pushType` `widgets`. The relay sends `{"aps": {"content-changed": true}}` with `apns-push-type` `widgets` and topic `<bundle id>.push-type.widgets` 30 s after each alert push. By then the extension's time has run out, so the queue count it stored in the App Group is current. The widget reads that count.
-
-### 9.4 App Attest on a new pairing
-
-1. A phase 7 relay adds `attestChallenge`, 32 random bytes in base64url, to the `welcome` of a pairing socket.
-2. The phone builds the pair request first, because the attestation binds it.
-3. The phone makes an App Attest key with `DCAppAttestService.generateKey`. The phone calls `attestKey(_:clientDataHash:completionHandler:)` with this hash:
+The provider token. The relay signs an ES256 JSON Web Token with Web Crypto:
 
 ```text
-clientData     = "lastide/v1/attest" || 0x00 || challenge || h1      82 bytes
+header = {"alg":"ES256","kid":"<the environment's Key ID>"}
+claims = {"iss":"<APPLE_TEAM_ID>","iat":<seconds since 1970, UTC>}
+token  = base64url(header) || "." || base64url(claims) || "." || base64url(ECDSA P-256 SHA-256 signature, r || s)
+```
+
+APNs refuses a token that changes more than once in 20 minutes on one connection. Cloudflare may carry the pushes of many rooms on one connection. So one Durable Object, `ApnsTokens` with the binding `APNS_TOKENS`, signs for every room:
+
+- The object keeps one token per push environment in its own SQLite storage (section 6.12).
+- It signs again after 45 minutes, or when the environment's Key ID changed. Calls that arrive while it signs wait for the new token.
+- A room asks the object for the token at each push and keeps no copy.
+- On `403 ExpiredProviderToken` the room asks for a renewal and sends once more. The object signs again only while it still holds the refused token.
+
+### 9.2 Device tokens
+
+After each `welcome` that lists `push`, the phone sends one `push-token` frame per token type:
+
+```json
+{"op": "push-token", "rid": "p1", "pushType": "alert", "token": "<lowercase hex>", "env": "production"}
+{"op": "push-token", "rid": "p2", "pushType": "widgets", "token": null, "env": "production"}
+```
+
+- Only a `phone` socket sends it. While phase 7 is off, the relay answers `refused` with `unsupported`.
+- `token` matches `^([0-9a-f]{2}){16,100}$`, because Apple does not fix a token's size. `null` removes that token.
+- The alert frame carries `null` while iOS does not allow the app's alerts. The widgets frame carries `null` while no widget is placed.
+- `env` is `production` for TestFlight and App Store builds, and `sandbox` for a Debug build. `sandbox` gets `refused` with `unsupported` while the relay holds no sandbox key.
+- A frame whose `env` differs from the stored one clears the other token type, because it came from another build.
+- While `RELAY_REQUIRE_ATTEST` is on, a phone without an attestation outside an exempt room gets `refused` with `notAttested`.
+- The relay stores `alert_token`, `widget_token` and `push_env` in the phone's row and answers `ok`. `remove-phone` and room deletion delete them with the row.
+
+The push environment picks the host: `https://api.push.apple.com` for `production`, and `https://api.sandbox.push.apple.com` for `sandbox`.
+
+### 9.3 Kind 4 envelopes and the APNs requests
+
+The PC seals a `notice` in slot 0, or a `count-update` in slot 1, in a kind 4 envelope with `INFO_PUSH`. The envelope holds at most 2,800 bytes. The PC sends kind 4 only after a `welcome` that lists `push`.
+
+The relay checks the header as section 6.5 says, then routes the envelope:
+
+1. A recipient without a phone row gets `dropped` with `unknownRecipient`.
+2. A slot 0 envelope under 60 s after the phone's last accepted one gets `dropped` with `rateLimited`. In slot 1 the limit is 20 minutes.
+3. A phone without an alert token gets `dropped` with `noPushToken`.
+4. The relay records the receive time, posts to APNs and answers the PC with one frame.
+
+```json
+{"op": "pushed", "to": "<phone device id>", "seq": 1794992460000}
+{"op": "dropped", "to": "<phone device id>", "seq": 1794992460000, "reason": "pushRefused", "apnsStatus": 400, "apnsReason": "BadDeviceToken"}
+```
+
+Each APNs answer leads to one token action and one frame:
+
+- 200: `pushed`.
+- 410: the relay deletes the token and answers `dropped` with `noPushToken`.
+- 400 `BadDeviceToken` or `DeviceTokenNotForTopic`: the relay deletes the token and answers `pushRefused`.
+- 403 `ExpiredProviderToken`: a new token and one more try (section 9.1). A second refusal stands.
+- Any other 4xx answer: `pushRefused`, and the token stays.
+- 429, a 5xx answer, or a `fetch` that throws: `pushUnavailable`, and the token stays. `apnsStatus` is 0 when `fetch` threw.
+- `apnsReason` is APNs' `reason`, or `other` when it does not match `^[A-Za-z]{1,40}$`. It is null when `fetch` threw.
+
+Table 25. The relay sends three kinds of APNs request, and each fixes its headers.
+
+| Header | Alert notice (slot 0) | Count update (slot 1) | Widget push |
+| --- | --- | --- | --- |
+| `:path` | `/3/device/<alert token>` | `/3/device/<alert token>` | `/3/device/<widget token>` |
+| `authorization` | `bearer <provider token>` | Same | Same |
+| `apns-push-type` | `alert` | `background` | `widgets` |
+| `apns-topic` | `<APP_BUNDLE_ID>` | `<APP_BUNDLE_ID>` | `<APP_BUNDLE_ID>.push-type.widgets` |
+| `apns-priority` | `10` | `5` | `5` |
+| `apns-expiration` | The receive time in seconds plus 86,400 | `0` | The due time in seconds plus 86,400 |
+| `apns-collapse-id` | The phone's device id, 22 characters | Not sent | Not sent |
+| `apns-id` | A random UUID | Same | Same |
+| `content-type` | `application/json` | Same | Same |
+
+The bodies, byte for byte apart from the values in angle brackets:
+
+```json
+{"aps":{"alert":{"title":"Lastide","body":"A rule waits for your review."},"mutable-content":1,"category":"LASTIDE_PLAIN","thread-id":"<phone device id>"},"lastide":{"v":1,"e":"<base64url of the envelope>"}}
+{"aps":{"content-available":1},"lastide":{"v":1,"e":"<base64url of the envelope>"}}
+{"aps":{"content-changed":true}}
+```
+
+- A 2,800-byte envelope takes 3,734 base64url characters, so the alert stays under APNs' 4,096-byte limit.
+- APNs requires priority 5 for `background`. Expiration 0 keeps a count update out of APNs' store, which holds one notification per bundle id.
+- The relay's alert names the plain category `LASTIDE_PLAIN`. Only the extension sets `PROPOSED_RULE`, after it opened the envelope (section 9.4).
+
+### 9.4 The notification service extension and the actions
+
+The notification service extension runs these steps:
+
+1. Read `lastide.v`, which must be 1, and `lastide.e`, which must be canonical base64url of 92 to 2,800 bytes.
+2. Check the header: kind 4, flags 0, slot 0, and the PC's device id as sender.
+3. Find the pairing whose phone id equals the header's recipient. Read its key from the shared keychain group.
+4. Open the envelope in Auth mode with the PC key and `INFO_PUSH`.
+5. Drop the push when its `seq` is not above `lastPushSeq` of that pairing. The extension keeps `lastPushSeq` in the App Group and never touches `lastRecvSeq`.
+6. Check the plaintext as a `notice` against section 7.3, and store the counts in the App Group.
+7. When the rule text may show and the notice holds a draft, show the draft. Set the title to the PC's name and the subtitle to empty. Set the body to `draft.text` and the category to `PROPOSED_RULE`. Store `shownSeq` = `seq` for that pairing.
+8. Otherwise set the title to "Lastide", the category to `LASTIDE_PLAIN`, and a body that counts the waiting rules.
+
+A failed step, a replay or the end of the extension's time shows fixed text, with `LASTIDE_PLAIN`. The title reads "Lastide", and the body reads "Open Lastide to see what changed." The extension never sets a `lastide` key in `userInfo`. When iOS does not run the extension at all, the relay's placeholder text shows.
+
+Two categories exist. `PROPOSED_RULE` carries Approve (`APPROVE`, `authenticationRequired`), Delete (`DELETE`, `destructive` and `authenticationRequired`) and Open (`OPEN`, `foreground`). `LASTIDE_PLAIN` carries Open only. Edit opens the app.
+
+Approve and Delete run in the app, in the background:
+
+1. The app opens `lastide.e` of the notification again, with steps 1 to 4 and 6 above.
+2. The app refuses unless the notice holds a draft and the header's `seq` equals `shownSeq` of that pairing.
+3. The app refuses unless the shown text is what step 7 sets. The title is the PC's name, the subtitle is empty, the body is `draft.text` and the category is `PROPOSED_RULE`.
+4. On a refusal the app sends nothing, and posts a local notification that asks the person to open Lastide.
+5. The app builds a `decision` for the draft with the notice's `storeVersion`. Its `text` and `scopeOptionId` are null.
+6. While the app holds an open socket to that room, the decision goes on that socket.
+7. Otherwise the app seals a kind 3 envelope with MAILBOX in slot 0, and posts it to `/frames` (section 6.14). The app opens no socket to that room until the POST answers.
+
+The relay writes the payload, so it can plant any `userInfo` key. It can also send a shown envelope again with its own text and no `mutable-content`. So the actions trust only the envelope that the app opens and the `shownSeq` that the extension wrote. The shown text must equal the extension's text.
+
+A count update in slot 1 reaches the app as a background push. The app opens it the same way, in slot 1, and the message must be `count-update`. A newer `storeVersion` updates the stored count, the badge and the widget.
+
+### 9.5 The widget push
+
+- The widget's push handler gives a second APNs token, which the phone registers with `pushType` `widgets`.
+- When APNs answers an alert notice with 200 and the phone holds a widget token, the relay sets a due time. The due time is 30 s after the envelope's receive time, and a newer alert notice moves it.
+- The room's alarm sends the widget push of Table 25 once the due time passes. The due time lives in SQLite, so a room that hibernates still sends it.
+- A widget push follows the token actions of section 9.3 for the widget token. The relay sends the PC no frame about it.
+
+### 9.6 App Attest on a new pairing
+
+1. While phase 7 is on, the `welcome` of each pairing socket carries its own `attestChallenge`: 32 random bytes in base64url.
+2. The phone builds the pair request first, because the attestation binds it.
+3. The phone makes an App Attest key and calls `attestKey(_:clientDataHash:completionHandler:)` with this hash:
+
+```text
+clientData     = "lastide/v1/attest" || 0x00 || challenge || h1      18 + 32 + 32 = 82 bytes
 clientDataHash = SHA-256(clientData)
 ```
 
-4. The phone sends the `attest` control frame, then the pair request envelope.
-5. The relay verifies the attestation with the documented App Attest server steps. The relay checks the certificate chain to the App Attest root and the nonce built from `clientDataHash`. The relay also checks the key id, the RP ID hash of the App ID and a counter of 0. The `aaguid` must match the build's environment. The relay keeps `pairRequestHash` in the socket's attachment.
-6. The relay forwards the pair request only when SHA-256 of the envelope equals `pairRequestHash`. Any refused check closes the socket with 4402.
-7. On `add-phone` the relay stores the attested key id in the phone's row.
+4. The phone sends `attest` with `rid`, `keyId`, `attestation` and `pairRequestHash`, and waits up to 10 s for `ok`. Then it sends the pair request. A phone whose `DCAppAttestService` reports no support skips the attestation.
+5. A socket may send one `attest`, and only before its kind 1 envelope. A second one, or one after the envelope, closes the socket with 4403.
+6. The relay runs Apple's 11 server steps. It wants exactly two certificates in `x5c`, and the nonce extension `1.2.840.113635.100.8.2` exactly once.
+7. A production key needs validation category 2 (TestFlight) or 4 (App Store). A development key passes only while `RELAY_ATTEST_DEV` is `on`, and needs category 3. Only the preview Worker may set that variable.
+8. The bundle version must be text of 1 to 64 code points. The relay refuses a key id that a phone row of the room already holds.
+9. A refused check closes the socket with 4402. A good attestation gets `ok`, and the socket keeps it until `add-phone`.
+10. The relay forwards the pair request only when SHA-256 of the envelope equals `pairRequestHash`. Otherwise the socket closes with 4402.
+11. `add-phone` copies the attestation into the phone's row: the key id into `attest_key_id`, and the rest into `phone_state` (section 6.12).
 
-A version 1 phone ignores `attestChallenge`. The relay demands the attestation only after the Worker sets `RELAY_REQUIRE_ATTEST`. The relay operator sets it once every phone in use runs a phase 7 build.
+The client data holds the socket's challenge, so an attestation made on one socket fails on another. The relay keeps no receipt and never asks Apple for the fraud metric.
 
-### 9.5 What version 1 code must already do
+While `RELAY_REQUIRE_ATTEST` is `on`, every phone the relay serves is attested, except in exempt rooms:
 
-- The phone and the PC refuse an envelope kind or flag bit that version 1 does not define. Kind 4 is defined, and the phone's socket refuses it. A version 1 relay refuses kind 4 from the PC, because its `welcome` does not list `push`.
-- Devices ignore unknown fields in `welcome`, including `attestChallenge` and new `features`.
-- The relay answers an unknown `op` from a known role with `refused` and `unsupported`, and does not close the socket. A version 1 relay answers the phase 7 ops `push-token` and `attest` the same way, when the role may send them.
-- The phone keeps its pairing records in one file that phase 7 can move into the App Group container. The phone keeps its Keychain items under one service, `lastide.pairing`.
-- The PC's `pair-accept.features` lists only what the PC supports. A phase 7 PC adds `push`.
+- A pair request from a socket without a good attestation closes the socket with 4402.
+- `add-phone` for a device without an attestation gets `refused` with `notAttested`.
+- A phone row without `attest_key_id` closes with 4402 at `hello`, gets `notAttested` at `push-token`, and gets 403 `notAttested` at `/frames`.
+
+A room is exempt when its creating account sat in the D1 table `attest_exempt` when the room was made. Only the live checks' throwaway accounts go there. Phones paired before phase 7 must pair again before the operator turns the variable on.
+
+### 9.7 What version 1 code must already do
+
+- The phone and the PC refuse an envelope kind or flag bit that version 1 does not define. Kind 4 is defined, and the phone's socket refuses it. A relay without push refuses kind 4 from the PC, because its `welcome` does not list `push`.
+- Devices ignore unknown fields in `welcome`, including `attestChallenge` and new `features`. A PC ignores the `pushed` frame and any `dropped` reason that it does not know.
+- The relay answers an unknown `op` from a known role with `refused` and `unsupported`, and does not close the socket. While phase 7 is off, the relay answers `push-token` and `attest` the same way, when the role may send them.
+- The phone keeps its pairing records in one file that phase 7 moves into the App Group container. The phone keeps its Keychain items under one service, `lastide.pairing`.
+- The PC's `pair-accept.features` lists only what the PC supports, and a phase 7 PC adds `push`. A phone registers its tokens whenever `welcome` lists `push`, so a phone paired in phase 6 gets notifications too.
 - `notice` already carries `storeVersion` and the draft's `changedAtStoreVersion`, so a lock-screen Approve passes the store version check of section 7.4.
 
 ## 10. Test vectors
 
 ### 10.1 Files
 
-Both files live in the iOS repository at `Packages/LastideKit/Tests/LastideKitTests/Vectors/`. The package's test target copies the folder as a resource.
+The three files live in the iOS repository at `Packages/LastideKit/Tests/LastideKitTests/Vectors/`. The package's test target copies the folder as a resource.
 
-Table 26. Two vector files cover the HPKE suite and Lastide's own byte rules.
+Table 26. Three vector files cover the HPKE suite and Lastide's own byte rules.
 
 | File | Content | Origin |
 | --- | --- | --- |
 | `rfc9180-a2.json` | RFC 9180 appendix A.2.1, Base Setup Information (mode_base, `0x00`), and A.2.3, Auth Setup Information (mode_auth, `0x02`), for DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20Poly1305 | Copied from the CFRG `test-vectors.json` |
 | `lastide-v1.json` | One pairing: the pair request with the phone's sealed key, `pair-received` with the exporter value and the check code, and `pair-accept`. Then one sealed `queue` message | Generated on the PC side |
+| `lastide-push-v1.json` | One `notice` and one `count-update`, each in a kind 4 envelope, and one App Attest client data hash (section 10.5) | Generated on the PC side |
 
 ### 10.2 The RFC 9180 vector
 
@@ -1748,9 +1953,45 @@ Table 29. The vectors run in three places, and each place checks the parts its l
 
 CryptoKit and swift-crypto do not expose the key schedule values, so the Swift tests compare opened plaintexts and exported values. The phone side checks sender behavior by round trip. A Swift test seals with `HPKE.Sender`, and the Node check opens the result in the live pairing test.
 
+### 10.5 The push vector
+
+`scripts/relay-check/make-vector.mjs` writes `lastide-push-v1.json` beside `lastide-v1.json`, from the same seeds and keys. The local check regenerates the file byte for byte and opens both envelopes with the Node phone.
+
+Table 30. The push vector reuses the pairing of `lastide-v1.json`, and each new input comes from a named seed.
+
+| Value | Rule |
+| --- | --- |
+| PC key, phone key, pairing id, phone id | As in Table 27 |
+| Ephemeral keys | `DeriveKeyPair(seed("ephemeral notice"))` and `DeriveKeyPair(seed("ephemeral count-update"))` |
+| Message ids | The first 16 bytes of `seed("message 5")` for `notice` and `seed("message 6")` for `count-update` |
+| Times and seq | The `notice` 120 s and the `count-update` 180 s after the pair request. Each message's `sentAt` equals its envelope's `seq` |
+| Attest challenge | `seed("attest challenge")`, 32 bytes. `h1` is `pairRequest.envelopeSha256` of `lastide-v1.json` |
+
+Format. One JSON object, with byte strings in lowercase hex:
+
+```text
+protocol, suite, generator, seeds, keys        as in lastide-v1.json
+ids: { pairingId, phoneId }
+notice:      { kind: 4, mode: 2, flags: 0, slot: 0, <envelope fields>, e }
+countUpdate: { kind: 4, mode: 2, flags: 0, slot: 1, <envelope fields>, e }
+attest:      { challenge, pairRequestHash, clientData, clientDataHash }
+```
+
+`<envelope fields>` are those of section 10.3. `e` is the envelope in base64url, as `lastide.e` carries it. `clientData` is the 82 bytes of section 9.6.
+
+The two plaintexts:
+
+```json
+{"type":"notice","id":"IuMbu8WdGWuKHONvHHOO2g","sentAt":1794992520000,"storeVersion":43,"queueCount":2,"draft":{"id":"d-0002","changedAtStoreVersion":43,"draftKind":"new","text":"Name each branch after its ticket.","scope":{"scope":"everyProject","kindOfWork":null,"projectNames":[]}}}
+```
+
+```json
+{"type":"count-update","id":"tQ5lXKe8HPNmSkEKT4fRPg","sentAt":1794992580000,"storeVersion":44,"queueCount":0}
+```
+
 ## Sources
 
-Every page below was read on 2026-11-18. Each row names what this document takes from it.
+Every page below was read on 2026-11-18, and the phase 7 rows on 2026-11-22. Each row names what this document takes from it.
 
 | Source | What this document relies on |
 | --- | --- |
@@ -1780,7 +2021,13 @@ Every page below was read on 2026-11-18. Each row names what this document takes
 | [Modifying content in newly delivered notifications][apns-nse] | `mutable-content`, the alert requirement, about 30 seconds per push |
 | [`authenticationRequired`][un-auth] and [`destructive`][un-destructive] | Lock-screen actions only on an unlocked device, and the destructive style |
 | [Updating widgets with WidgetKit push notifications][widget-push] | The `widgets` push type, topic and payload |
-| [Validating apps that connect to your server][attest-validate] and [`attestKey(_:clientDataHash:completionHandler:)`][attest-key] | The App Attest server steps |
+| [Validating apps that connect to your server][attest-validate] and [`attestKey(_:clientDataHash:completionHandler:)`][attest-key] | The App Attest server steps, the AAGUID of each environment, the validation category, the bundle version and one key per user |
+| [Attestation Object Validation Guide][attest-guide] | Apple's sample attestation, which the relay check verifies with the expected nonce, RP ID hash and extensions |
+| [Apple App Attestation Root CA][attest-root] | The root of every attestation chain. SHA-256 of its DER, computed locally: `1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932` |
+| [Establishing a token-based connection to APNs][apns-token] | ES256 with `kid`, `iss` and `iat`; `ExpiredProviderToken` after an hour; the limit on new tokens per connection; topic-specific keys per environment |
+| [Handling notification responses from APNs][apns-resp] | The statuses and reasons of section 9.3, and which ones mean a dead token |
+| [Pushing background updates to your app][apns-background] | Priority 5 for `background`, and the advice of two or three background pushes an hour at most |
+| [`cborg` 6.2.1][cborg] | Strict CBOR decoding: `strict`, `allowIndefinite`, `rejectDuplicateMapKeys`, `useMaps` and `decodeFirst` |
 | [RFC 4648, section 5][rfc4648] | The base64url alphabet |
 | [RFC 6455, section 7.4.2][rfc6455] | Close codes 4000 to 4999, reserved for private use |
 | The `qrcode` npm package 1.5.4, run locally | QR versions 8 and 9 at level M for the payload lengths |
@@ -1830,3 +2077,9 @@ Every page below was read on 2026-11-18. Each row names what this document takes
 [attest-key]: https://developer.apple.com/documentation/devicecheck/dcappattestservice/attestkey(_:clientdatahash:completionhandler:)
 [rfc4648]: https://www.rfc-editor.org/rfc/rfc4648#section-5
 [rfc6455]: https://www.rfc-editor.org/rfc/rfc6455#section-7.4.2
+[attest-guide]: https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide
+[attest-root]: https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem
+[apns-token]: https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns
+[apns-resp]: https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
+[apns-background]: https://developer.apple.com/documentation/usernotifications/pushing-background-updates-to-your-app
+[cborg]: https://unpkg.com/cborg@6.2.1/README.md
