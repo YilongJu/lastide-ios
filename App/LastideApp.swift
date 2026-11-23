@@ -5,7 +5,7 @@ import SwiftUI
 enum ScreenshotScreen: String, CaseIterable, Sendable {
     case queue, draftDetail, library, ruleDetail, learning, settings
     case pairingDisclosure, pairingScan, pairingWaiting, pairingCode, pairingFailed
-    /// A synthetic PC, paired and offline, last seen 2 min ago.
+    /// Two synthetic paired PCs: WORKSTATION-A, shown and online, and STUDIO-LAPTOP, offline and last seen 3 hours ago.
     case settingsPaired
     /// The same PC, with one approval that the relay stored and the PC has not answered yet.
     case queueWaiting
@@ -88,7 +88,8 @@ extension ScreenshotStaging {
         case .pairingCode: model.showPairingStep(.checkCode("714 390"))
         case .pairingFailed: model.showPairingStep(.failed(AppText.unreachable))
         case .settingsPaired:
-            model.showForScreenshot(records: [try record()], store: try store(queue: true))
+            model.showForScreenshot(records: [try record(), try secondRecord()], store: try store(queue: true),
+                                    pcOnline: true)
         case .settingsNotificationsOn:
             model.showForScreenshot(records: [try record()], store: try store(queue: true), permission: .on,
                                     registered: true)
@@ -110,16 +111,26 @@ extension ScreenshotStaging {
 enum ScreenshotStaging {
     /// A PC named WORKSTATION-A on the placeholder relay origin, paired a day ago and last seen 2 min ago.
     static func record() throws -> PairingRecord {
+        try record(name: "WORKSTATION-A", firstByte: 0, lastSeenAgoMs: 120_000)
+    }
+
+    /// A second PC, STUDIO-LAPTOP, paired a day ago and last seen 3 hours ago.
+    static func secondRecord() throws -> PairingRecord {
+        try record(name: "STUDIO-LAPTOP", firstByte: 100, lastSeenAgoMs: 3 * 3_600_000)
+    }
+
+    /// A synthetic record. `firstByte` makes its pairing id, PC key and phone id differ from another record's.
+    private static func record(name: String, firstByte: Int, lastSeenAgoMs: Int) throws -> PairingRecord {
         let now = currentTimeMs()
         let json: [String: Any] = [
-            "pairingId": Base64URL.encode(Data((0..<16).map { UInt8($0) })),
+            "pairingId": Base64URL.encode(Data((firstByte..<firstByte + 16).map { UInt8($0) })),
             "relayOrigin": "https://relay.example",
-            "pcKey": Base64URL.encode(Data((32..<64).map { UInt8($0) })),
-            "pcName": "WORKSTATION-A",
+            "pcKey": Base64URL.encode(Data((firstByte + 32..<firstByte + 64).map { UInt8($0) })),
+            "pcName": name,
             "pcSchema": LastideProtocol.schemaRevision,
-            "phoneId": Base64URL.encode(Data((16..<32).map { UInt8($0) })),
+            "phoneId": Base64URL.encode(Data((firstByte + 16..<firstByte + 32).map { UInt8($0) })),
             "pairedAt": now - 86_400_000,
-            "pcLastSeenAt": now - 120_000,
+            "pcLastSeenAt": now - lastSeenAgoMs,
             "lastSentSeq": 0,
             "lastRecvSeq": 0,
             "features": ["mailbox", "push"],

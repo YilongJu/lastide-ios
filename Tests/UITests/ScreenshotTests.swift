@@ -124,6 +124,9 @@ final class ScreenshotTests: XCTestCase {
     func testSettingsLarge() throws {
         try capture("settings-large", screen: "settings", waitFor: identifier("screen.settings"), large: true)
     }
+    func testSettingsPairedLarge() throws {
+        try capture("settingsPaired-large", screen: "settingsPaired", waitFor: identifier("pairedPC"), large: true)
+    }
 
     // MARK: Helpers
 

@@ -8,6 +8,7 @@ import UIKit
 struct SettingsView: View {
     @Bindable var model: AppModel
     @State private var pendingRevoke: PairingRecord?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let flow = model.pairingFlow!
@@ -52,7 +53,6 @@ struct SettingsView: View {
         Section {
             ForEach(model.records, id: \.pairingId) { record in
                 recordRow(record)
-                Button("Revoke", role: .destructive) { pendingRevoke = record }
             }
             if !PairingSection.showsSteps(flow.step) {
                 Button { flow.begin() } label: {
@@ -68,35 +68,70 @@ struct SettingsView: View {
         }
     }
 
+    /// One row per PC: the name and its badges, then the "Shown" checkmark and the PC's own Revoke button at the
+    /// trailing edge. At the accessibility text sizes the checkmark and Revoke move under the badges, inside the same row.
     private func recordRow(_ record: PairingRecord) -> some View {
-        let broken = model.brokenIDs.contains(record.pairingId)
         let selected = record.pairingId == model.selectedID
-        return HStack {
-            VStack(alignment: .leading, spacing: 6) {
-                if broken {
-                    Text(record.pcName)
-                    StatusBadge(text: AppText.pairAgain, systemImage: "exclamationmark.triangle")
-                } else {
-                    Text(AppText.pairedWith(record.pcName) + ", "
-                         + AppText.lastSeen(online: selected && model.pcOnline, at: record.pcLastSeenAt,
-                                            now: currentTimeMs()))
-                    if selected && model.roomGone {
-                        StatusBadge(text: AppText.roomGone, systemImage: "exclamationmark.triangle")
-                    }
-                    if model.registeredIDs.contains(record.pairingId) {
-                        StatusBadge(text: AppText.notificationsRegistered, systemImage: "bell")
+        let broken = model.brokenIDs.contains(record.pairingId)
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    recordDetails(record, selected: selected, broken: broken)
+                    HStack {
+                        if selected { shownMark }
+                        Spacer(minLength: 0)
+                        revokeButton(record)
                     }
                 }
+            } else {
+                HStack(spacing: 12) {
+                    recordDetails(record, selected: selected, broken: broken)
+                    Spacer(minLength: 0)
+                    if selected { shownMark }
+                    revokeButton(record)
+                }
             }
-            Spacer()
-            if selected { Image(systemName: "checkmark").accessibilityLabel("Shown") }
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pairedPC")
         .onTapGesture {
             guard !broken, !selected else { return }
             do { try model.select(record.pairingId) } catch { model.notice = "This PC could not open: \(error)" }
         }
+    }
+
+    /// The PC name, which wraps rather than truncates, and the PC's badges.
+    private func recordDetails(_ record: PairingRecord, selected: Bool, broken: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(record.pcName)
+                .fixedSize(horizontal: false, vertical: true)
+            if broken {
+                StatusBadge(text: AppText.pairAgain, systemImage: "exclamationmark.triangle")
+            } else {
+                PCStatusBadge(online: selected && model.pcOnline,
+                              lastSeen: AppText.lastSeen(online: false, at: record.pcLastSeenAt, now: currentTimeMs()))
+                if selected && model.roomGone {
+                    StatusBadge(text: AppText.roomGone, systemImage: "exclamationmark.triangle")
+                }
+                if model.registeredIDs.contains(record.pairingId) {
+                    StatusBadge(text: AppText.notificationsRegistered, systemImage: "bell")
+                }
+            }
+        }
+    }
+
+    private var shownMark: some View {
+        Image(systemName: "checkmark")
+            .accessibilityLabel("Shown")
+    }
+
+    /// The PC's own Revoke button. Borderless, so a tap on the rest of the row still picks the PC. It asks first.
+    private func revokeButton(_ record: PairingRecord) -> some View {
+        Button("Revoke", role: .destructive) { pendingRevoke = record }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Revoke \(record.pcName)")
+            .accessibilityIdentifier("revokePC")
     }
 }
 

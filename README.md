@@ -15,7 +15,7 @@ The phone and the desktop talk through a relay, and the relay sees only encrypte
 | `Packages/LastideKit` | The Swift package with the protocol, the encryption and the sync messages, and its tests |
 | `Tests/UnitTests` | The RFC 9180, Lastide and push test vectors through CryptoKit |
 | `Tests/HostedTests` | Tests that run inside the app, because the Keychain and the App Group need the app's entitlements |
-| `Tests/UITests` | Screenshot tests for every screen and state, in light and dark, on demo data or a synthetic paired PC, and six at the accessibility text size AX3 |
+| `Tests/UITests` | Screenshot tests for every screen and state, in light and dark, on demo data or a synthetic paired PC, and seven at the accessibility text size AX3 |
 | `project.yml` | The XcodeGen spec. `Config/Debug.xcconfig` reads the git-ignored `Local.xcconfig` |
 | `docs/protocol.md` | The phone protocol |
 | `scripts/ci` | The simulator picker, the ad hoc signing step, the export check of the three bundles' entitlements, and the plants that prove both checks fail on a bad build |

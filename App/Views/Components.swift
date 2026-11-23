@@ -41,6 +41,56 @@ extension ItemStatus {
     }
 }
 
+/// A paired PC's connection, as its badge on the Settings screen shows it.
+struct PCStatusBadge: View {
+    let online: Bool
+    /// "last seen 2 min ago" or "not seen yet". Unused while the PC is online.
+    let lastSeen: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: online ? "circle.fill" : "circle")
+                .imageScale(.small)
+                .font(.caption2)
+            Text(online ? "Online" : lastSeen.prefix(1).uppercased() + lastSeen.dropFirst())
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(online ? Color.onlineText : Color.offlineText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(online ? Color.onlineFill : Color.offlineFill))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(online ? "Online" : "Offline, \(lastSeen)")
+        .accessibilityIdentifier("pcStatus")
+    }
+}
+
+extension Color {
+    /// Deep green on a pale green fill in light mode, pale green on a dark green fill in dark mode. Both measure over 5:1.
+    static let onlineText = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.55, green: 0.92, blue: 0.62, alpha: 1)
+            : UIColor(red: 0.0, green: 0.42, blue: 0.16, alpha: 1)
+    })
+    static let onlineFill = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.19, green: 0.82, blue: 0.35, alpha: 0.18)
+            : UIColor(red: 0.20, green: 0.78, blue: 0.35, alpha: 0.15)
+    })
+    /// Dark grey on a light grey fill in light mode, light grey on a mid grey fill in dark mode. Both measure over 6:1.
+    static let offlineText = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.78, green: 0.78, blue: 0.80, alpha: 1)
+            : UIColor(red: 0.28, green: 0.28, blue: 0.30, alpha: 1)
+    })
+    static let offlineFill = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.23, green: 0.23, blue: 0.24, alpha: 1)
+            : UIColor(red: 0.90, green: 0.90, blue: 0.92, alpha: 1)
+    })
+}
+
 /// The capsule of a rule that the person turned off.
 struct OffBadge: View {
     var body: some View {

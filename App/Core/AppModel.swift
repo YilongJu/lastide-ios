@@ -173,9 +173,10 @@ final class AppModel {
 
     /// Shows synthetic paired PCs and a synthetic store, for the screenshots. Nothing connects, and nothing is written.
     func showForScreenshot(records: [PairingRecord], store: ReviewStore, permission: NotificationPermission = .notAsked,
-                           registered: Bool = false) {
+                           registered: Bool = false, pcOnline: Bool = false) {
         precondition(!live, "only the screenshot model shows synthetic pairings")
         self.records = records
+        self.pcOnline = pcOnline
         selectedID = records.first?.pairingId
         self.store = store
         self.permission = permission
