@@ -11,6 +11,28 @@ permissions:
   contents: read
 
 jobs:
+  # CHANGELOG.md feeds the app's What's New screen and each TestFlight build's What to Test text.
+  changelog:
+    name: Changelog format, entry check and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check the changelog's format
+        run: python3 scripts/ci/changelog.py check
+      # A push that changes App/, Extensions/ or Packages/LastideKit/Sources/ must change CHANGELOG.md too, unless a
+      # commit message holds "[no changelog]".
+      - name: Check that an app change comes with a changelog entry
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: python3 scripts/ci/changelog.py check-push --base "$BEFORE" --head "$GITHUB_SHA"
+      # The tests plant pushes that must fail the check above, and run the TestFlight notes script against a stand-in.
+      - name: Run the changelog and TestFlight notes tests
+        run: python3 scripts/ci/test_changelog.py
+
   package:
     name: LastideKit tests on Linux
     runs-on: ubuntu-latest

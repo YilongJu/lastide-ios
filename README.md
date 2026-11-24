@@ -16,6 +16,7 @@ The phone and the desktop talk through a relay, and the relay sees only encrypte
 | `Tests/UnitTests` | The RFC 9180, Lastide and push test vectors through CryptoKit |
 | `Tests/HostedTests` | Tests that run inside the app, because the Keychain and the App Group need the app's entitlements |
 | `Tests/UITests` | Screenshot tests for every screen and state, in light and dark, on demo data or a synthetic paired PC, and ten at the accessibility text size AX3. Each picture has its view tree beside it |
+| `CHANGELOG.md` | What changed in each TestFlight build, newest first. The app bundles it for Settings, What's New, and TestFlight shows its Unreleased entries as What to Test |
 | `project.yml` | The XcodeGen spec. `Config/Debug.xcconfig` reads the git-ignored `Local.xcconfig` |
 | `docs/protocol.md` | The phone protocol |
 | `scripts/ci` | The simulator picker, the ad hoc signing step, the export check of the three bundles' entitlements, and the plants that prove both checks fail on a bad build. `check_no_words.sh` searches every fixture and view tree for the hosted test's made-up words, and `run_hosted_plants.sh` shows that the learning words tests fail on their planted faults |
@@ -46,6 +47,21 @@ It then signs that build ad hoc with a made-up Team ID and runs the signing and 
 It signs the app and its two extensions with their entitlements, exports once, checks the three bundles' entitlements, and only then uploads.
 A screenshot run starts the app with `-LastideScreen <screen> -LastideColorScheme light` or `dark`, and shows demo data or a synthetic paired PC. It never reads the disk, the Keychain or the network.
 Signing keys live only in GitHub repository secrets.
+
+## The changelog
+
+Each change a tester can see gets an entry under `## Unreleased` in `CHANGELOG.md`, in the same push as the change.
+Write what a tester can now do, or what is fixed, in plain words.
+The Build workflow fails a push that changes `App/`, `Extensions/` or `Packages/LastideKit/Sources/` without changing `CHANGELOG.md`.
+When a change means nothing to a tester, write `[no changelog]` in a commit message of the push.
+`scripts/ci/changelog.py check` checks the format, and `Changelog.parse` in LastideKit reads the same format in the app.
+
+A TestFlight run takes the Unreleased entries as the build's What to Test text, and refuses to start when there is none.
+After the upload it sets that text through the App Store Connect API, once the build is processed.
+It then commits `CHANGELOG.md` to `main` with the entries under `## Build <run number> (<date>)` and an empty Unreleased section.
+Pull before your next commit.
+The app built in that run holds the file from before the stamp, and it shows the Unreleased entries as its own build's, because its build number is newer than every build the file lists.
+When the stamp step fails, run `python3 scripts/ci/changelog.py stamp --build N --date YYYY-MM-DD --notes notes.txt` with the run's notes and push the result.
 
 ## Rights
 
