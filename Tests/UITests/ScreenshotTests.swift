@@ -128,10 +128,11 @@ final class ScreenshotTests: XCTestCase {
             try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Not measured"))
         }
     }
+    /// The age line names the PC and how old the numbers are. The query goes by identifier, because a label search
+    /// over the two charts' trees can time out on the hosted runner.
     func testLearningPaired() throws {
-        try capture("learningPaired", waitFor: identifier("screen.learning")) { app in
-            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "learningAge",
-                                             "From WORKSTATION-A, 2 min ago"))
+        try capture("learningPaired", waitFor: identifier("learningAge")) { app in
+            XCTAssertEqual(app.staticTexts["learningAge"].firstMatch.label, "From WORKSTATION-A, 2 min ago")
         }
     }
     func testLearningOffline() throws {

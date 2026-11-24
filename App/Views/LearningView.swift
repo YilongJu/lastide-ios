@@ -179,7 +179,8 @@ struct WeekChart: View {
                     ForEach(bars.reversed()) { bar in
                         NavigationLink(value: AppRoute.learning(route(bar.week))) {
                             LabeledContent {
-                                Text(bar.state == .notMeasured ? LearningText.notMeasured : "\(bar.value)").monospacedDigit()
+                                // An unmeasured week has no number: its state line says so once.
+                                Text(bar.state == .notMeasured ? "" : "\(bar.value)").monospacedDigit()
                             } label: {
                                 Text(bar.current ? LearningText.soFar(LearningText.weekOf(bar.week.weekStart))
                                      : LearningText.weekOf(bar.week.weekStart))
