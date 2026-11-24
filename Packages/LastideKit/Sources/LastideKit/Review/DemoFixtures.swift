@@ -31,4 +31,8 @@ public struct DemoFixtures: Sendable {
 public enum DemoFixtureError: Error, Equatable, Sendable {
     case missing(String)
     case wrongType
+    /// `learning.json` holds two lists of one subject.
+    case duplicateList(String)
+    /// A list's number differs from its rows and its older items.
+    case listDoesNotAddUp(String)
 }

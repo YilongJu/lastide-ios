@@ -190,7 +190,7 @@ final class PushTests: XCTestCase {
         XCTAssertThrowsError(try SyncMessage.decode(plaintext, revision: 2)) { error in
             XCTAssertEqual((error as? MessageDecodingError)?.code, .unknownType)
         }
-        XCTAssertEqual(LastideProtocol.schemaRevision, 3)
+        XCTAssertEqual(LastideProtocol.schemaRevision, 4)
         XCTAssertEqual(MessageType.countUpdate.kind, .push)
         XCTAssertEqual(MessageType.countUpdate.slot, 1)
         XCTAssertEqual(MessageType.countUpdate.flags, [])

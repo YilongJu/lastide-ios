@@ -149,10 +149,25 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
     public var draftingRunCap: Int?
     /// The principles in import drafts that wait on the PC, from schema revision 2. Absent from a revision 1 PC.
     public var importRulesWaiting: Int?
+    /// Rules approved this week and not deleted, from schema revision 4. Absent from an older PC.
+    public var rulesApprovedThisWeek: Int?
+    /// Last week's repeat corrections typed before this weekday and clock time, from schema revision 4. Absent from an
+    /// older PC, and null while last week is not measured.
+    public var repeatCorrectionsLastWeekByNow: Int??
+    /// Last week's violations by this weekday and clock time, from schema revision 4.
+    public var violationsLastWeekByNow: Int??
+    /// Today's drafting runs that finished, from schema revision 4.
+    public var draftingRunsFinishedToday: Int?
+    /// The time from which rule learning asked about turns, from schema revision 4. Null before the PC's first call.
+    public var measuredFrom: Int??
+    /// The PC's local date when it built the counts, from schema revision 4. The phone sends it as `day`.
+    public var today: String?
 
     enum CodingKeys: String, CodingKey {
         case id, sentAt, schema, storeVersion, repeatCorrectionsThisWeek, repeatCorrectionsLastWeek, rulesApproved
         case violationsThisWeek, draftsToday, draftCap, weeks, draftingRunsToday, draftingRunCap, importRulesWaiting
+        case rulesApprovedThisWeek, repeatCorrectionsLastWeekByNow, violationsLastWeekByNow, draftingRunsFinishedToday
+        case measuredFrom, today
     }
 
     public init(from decoder: Decoder) throws {
@@ -171,6 +186,12 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
         draftingRunsToday = try c.decodeIfPresent(Int.self, forKey: .draftingRunsToday)
         draftingRunCap = try c.decodeIfPresent(Int.self, forKey: .draftingRunCap)
         importRulesWaiting = try c.decodeIfPresent(Int.self, forKey: .importRulesWaiting)
+        rulesApprovedThisWeek = try c.decodeIfPresent(Int.self, forKey: .rulesApprovedThisWeek)
+        repeatCorrectionsLastWeekByNow = try c.optionalNullable(Int.self, forKey: .repeatCorrectionsLastWeekByNow)
+        violationsLastWeekByNow = try c.optionalNullable(Int.self, forKey: .violationsLastWeekByNow)
+        draftingRunsFinishedToday = try c.decodeIfPresent(Int.self, forKey: .draftingRunsFinishedToday)
+        measuredFrom = try c.optionalNullable(Int.self, forKey: .measuredFrom)
+        today = try c.decodeIfPresent(String.self, forKey: .today)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -189,6 +210,12 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
         try c.encodeIfPresent(draftingRunsToday, forKey: .draftingRunsToday)
         try c.encodeIfPresent(draftingRunCap, forKey: .draftingRunCap)
         try c.encodeIfPresent(importRulesWaiting, forKey: .importRulesWaiting)
+        try c.encodeIfPresent(rulesApprovedThisWeek, forKey: .rulesApprovedThisWeek)
+        try c.encodeOptionalNullable(repeatCorrectionsLastWeekByNow, forKey: .repeatCorrectionsLastWeekByNow)
+        try c.encodeOptionalNullable(violationsLastWeekByNow, forKey: .violationsLastWeekByNow)
+        try c.encodeIfPresent(draftingRunsFinishedToday, forKey: .draftingRunsFinishedToday)
+        try c.encodeOptionalNullable(measuredFrom, forKey: .measuredFrom)
+        try c.encodeIfPresent(today, forKey: .today)
     }
 
     func validate(_ path: String) throws {
@@ -200,9 +227,13 @@ public struct Counts: Hashable, Sendable, Codable, Validatable {
                               (repeatCorrectionsLastWeek, "repeatCorrectionsLastWeek"),
                               (violationsThisWeek, "violationsThisWeek"), (draftCap, "draftCap"),
                               (draftingRunsToday, "draftingRunsToday"), (draftingRunCap, "draftingRunCap"),
-                              (importRulesWaiting, "importRulesWaiting")] {
+                              (importRulesWaiting, "importRulesWaiting"), (rulesApprovedThisWeek, "rulesApprovedThisWeek"),
+                              (repeatCorrectionsLastWeekByNow ?? nil, "repeatCorrectionsLastWeekByNow"),
+                              (violationsLastWeekByNow ?? nil, "violationsLastWeekByNow"),
+                              (draftingRunsFinishedToday, "draftingRunsFinishedToday"), (measuredFrom ?? nil, "measuredFrom")] {
             try Check.optionalInteger(value, path + "." + name)
         }
+        if let today { try Check.weekStart(today, path + ".today") }
         try Check.count(weeks, path + ".weeks", minimum: 0, maximum: 12)
         for (i, week) in weeks.enumerated() { try week.validate(path + ".weeks[\(i)]") }
     }

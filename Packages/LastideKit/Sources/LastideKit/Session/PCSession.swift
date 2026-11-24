@@ -33,8 +33,9 @@ public struct PCSession: Sendable {
     public private(set) var record: PairingRecord
     private let phoneKey: Curve25519.KeyAgreement.PrivateKey
     private let pcKey: Curve25519.KeyAgreement.PublicKey
-    /// Waiting reply keys, oldest first. They live in memory only.
-    private var replyKeys: [Curve25519.KeyAgreement.PrivateKey] = []
+    /// Waiting reply keys with the id of the request that carried each, oldest first. They live in memory only.
+    /// Each key opens one answer, to its own request, and the session then forgets it (protocol 7.2 and 7.6).
+    private var replyKeys: [(requestID: String, key: Curve25519.KeyAgreement.PrivateKey)] = []
 
     /// Opens a channel from a stored record and the phone key from the Keychain.
     public init(record: PairingRecord, phoneKey: Curve25519.KeyAgreement.PrivateKey) throws {
@@ -43,8 +44,11 @@ public struct PCSession: Sendable {
         self.pcKey = try record.pcPublicKey()
     }
 
-    /// The number of reply keys waiting for `evidence`.
+    /// The number of reply keys waiting for `evidence` or `learning-words`.
     public var waitingReplyKeyCount: Int { replyKeys.count }
+
+    /// Whether the reply key of this request still waits for its answer.
+    public func holdsReplyKey(for requestID: String) -> Bool { replyKeys.contains { $0.requestID == requestID } }
 
     /// Seals one phone message to the PC in Auth mode, with the flags and slot of Table 20 (section 5.7).
     public mutating func seal(_ message: SyncMessage, now: Int) throws -> SealedEnvelope {
@@ -59,15 +63,28 @@ public struct PCSession: Sendable {
                                 info: Labels.messageInfo(record.pairingId), plaintext: plaintext)
     }
 
-    /// Builds an `evidence-request` with a fresh reply key, kept in memory until `dropReplyKeys`.
+    /// Builds an `evidence-request` with a fresh reply key, kept in memory until its answer opens or `dropReplyKey`.
     public mutating func makeEvidenceRequest(draftID: String, storeVersion: Int, now: Int) -> EvidenceRequest {
         let replyKey = Curve25519.KeyAgreement.PrivateKey()
-        replyKeys.append(replyKey)
-        return EvidenceRequest(id: makeMessageID(), sentAt: now, draftId: draftID, storeVersion: storeVersion,
+        let id = makeMessageID()
+        replyKeys.append((id, replyKey))
+        return EvidenceRequest(id: id, sentAt: now, draftId: draftID, storeVersion: storeVersion,
                                replyKey: Base64URL.encode(replyKey.publicKey.rawRepresentation))
     }
 
-    /// Deletes every reply key. Call it when the detail screen closes and when the app leaves the screen.
+    /// Builds a `learning-words-request` for one row's turn reference, with a fresh reply key kept in memory until its
+    /// answer opens or `dropReplyKey` (protocol 7.6).
+    public mutating func makeLearningWordsRequest(ref: String, now: Int) -> LearningWordsRequest {
+        let replyKey = Curve25519.KeyAgreement.PrivateKey()
+        let id = makeMessageID()
+        replyKeys.append((id, replyKey))
+        return LearningWordsRequest(id: id, sentAt: now, ref: ref, replyKey: Base64URL.encode(replyKey.publicKey.rawRepresentation))
+    }
+
+    /// Deletes the reply key of one request. Call it when that request's screen closes.
+    public mutating func dropReplyKey(requestID: String) { replyKeys.removeAll { $0.requestID == requestID } }
+
+    /// Deletes every reply key. Call it when the app leaves the active state, the PC goes offline or the socket ends.
     public mutating func dropReplyKeys() { replyKeys.removeAll() }
 
     /// Records the PC's schema revision from `schema` in a snapshot or `pair-accept` (section 7.1).
@@ -96,10 +113,12 @@ public struct PCSession: Sendable {
         let aad = header.bytes
         let info = Labels.messageInfo(record.pairingId)
         var plaintext: Data?
+        var openedBy: String?
         if header.flags.contains(.replyKey) {
-            for key in replyKeys.reversed() {
-                if let opened = try? Self.open(ciphertext, aad: aad, enc: header.enc, key: key, info: info, sender: pcKey) {
+            for entry in replyKeys.reversed() {
+                if let opened = try? Self.open(ciphertext, aad: aad, enc: header.enc, key: entry.key, info: info, sender: pcKey) {
                     plaintext = opened
+                    openedBy = entry.requestID
                     break
                 }
             }
@@ -107,6 +126,8 @@ public struct PCSession: Sendable {
             plaintext = try? Self.open(ciphertext, aad: aad, enc: header.enc, key: phoneKey, info: info, sender: pcKey)
         }
         guard let plaintext else { return .ignored("the envelope did not open") }
+        // A reply key opens one answer: the PC forgets the key after it seals, so the phone forgets it too.
+        if let openedBy { dropReplyKey(requestID: openedBy) }
 
         record.lastRecvSeq = header.seq
         let report = ReceivedReport(from: .pc, upTo: header.seq)
@@ -128,6 +149,11 @@ public struct PCSession: Sendable {
                                code: .badMessage, detail: "\(type.rawValue) does not fit this kind, direction, flags or slot")
             return .unusable(reply: reply, report)
         }
+        // A reply key belongs to one request, so its answer must name that request.
+        if let openedBy, message.answeredRequestID != openedBy {
+            return .unusable(reply: ErrorMessage(id: makeMessageID(), sentAt: now, inReplyTo: message.id, code: .badMessage,
+                                                 detail: "\(type.rawValue) names another request than its reply key"), report)
+        }
         return .message(message, report)
     }
 
@@ -136,5 +162,16 @@ public struct PCSession: Sendable {
         var recipient = try HPKE.Recipient(privateKey: key, ciphersuite: LastideProtocol.ciphersuite, info: info,
                                            encapsulatedKey: enc, authenticatedBy: sender)
         return try recipient.open(ciphertext, authenticating: aad)
+    }
+}
+
+extension SyncMessage {
+    /// The request id that an answer sealed to a reply key names, or nil for every other type.
+    var answeredRequestID: String? {
+        switch self {
+        case .evidence(let evidence): return evidence.requestId
+        case .learningWords(let words): return words.requestId
+        default: return nil
+        }
     }
 }

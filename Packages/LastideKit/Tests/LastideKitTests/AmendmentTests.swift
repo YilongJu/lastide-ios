@@ -55,7 +55,7 @@ final class AmendmentTests: XCTestCase {
         XCTAssertFalse(encoded.contains("draftingRunsToday"), "a revision 1 message stays as it came")
         let negative = two.replacingOccurrences(of: #""importRulesWaiting":12"#, with: #""importRulesWaiting":-1"#)
         XCTAssertThrowsError(try decode(countsJSON(negative)))
-        XCTAssertEqual(LastideProtocol.schemaRevision, 3, "revision 3 adds count-update (protocol 7.1)")
+        XCTAssertEqual(LastideProtocol.schemaRevision, 4, "revision 4 adds the learning lists and words (protocol 7.1)")
         XCTAssertEqual(ReviewText.importWaiting(12), "An import of 12 rules waits on your PC.")
         XCTAssertEqual(ReviewText.importWaiting(1), "An import of 1 rule waits on your PC.")
         XCTAssertEqual(ReviewText.draftingRuns(3, cap: 20), "3 of 20")

@@ -22,6 +22,28 @@ struct OpenEvidence: Equatable, Sendable {
     var evidence: Evidence?
 }
 
+/// The words of the one turn row on the screen (protocol section 7.6). They live in memory only, until the row's screen
+/// closes or the app leaves the active state.
+struct OpenWords: Equatable, Sendable {
+    /// The row's turn reference.
+    let ref: String
+    /// The request that waits for its answer, or nil once the answer came or the phone did not ask.
+    var requestID: String?
+    var phase: LearningWordsPhase
+    /// When the request left, in ms, for the 10 s limit.
+    var sentAt: Int?
+}
+
+/// What the screenshot model shows on the learning screens of a synthetic paired PC. Nothing connects.
+struct StagedLearning: Sendable {
+    /// Whether the synthetic PC answers. Offline, a list reads "Appears while your PC is online".
+    var online: Bool
+    /// The answer every Show My Words gets. It is never `words`, because a screenshot never shows words.
+    var words: LearningWordsPhase?
+    /// Added to every list's number, to stage the mismatch line of design Table 10.
+    var valueShift = 0
+}
+
 /// The stores of a loaded model: the app's own files, the App Group files and the Keychain in the shared group.
 struct LiveStores: Sendable {
     let files: AppFiles
@@ -84,6 +106,14 @@ final class AppModel {
     private(set) var pcOnline = false
     private(set) var diagnostics = Diagnostics()
     private(set) var evidence: OpenEvidence?
+    /// The open learning lists, one per subject on a screen (protocol section 7.6). They live in memory only.
+    private(set) var learningLists: [LearningSubject: LearningList] = [:]
+    /// The words of the turn row on the screen.
+    private(set) var learningWords: OpenWords?
+    /// Rises each time the app returns to the active state, so each open list and draft screen asks again.
+    private(set) var screenGeneration = 0
+    /// The newest thresholds a page carried, for a row's detail.
+    private(set) var learningThresholds: LearningThresholds?
     /// A sentence to show once, such as a refusal or a close code's text.
     var notice: String?
     /// True after the room was deleted (close code 4404). Settings offers to remove the PC.
@@ -136,6 +166,12 @@ final class AppModel {
     @ObservationIgnored private var ridCounter = 0
     /// Rooms with a `/frames` request in flight. The model opens no socket to them until the POST answers (design 6.5).
     @ObservationIgnored private var postingFrames: Set<PairingID> = []
+    /// The demo's lists, loaded on the first open in demo mode.
+    @ObservationIgnored private var demoLearning: DemoLearning?
+    /// The screenshot model's learning answers.
+    @ObservationIgnored private var stagedLearning: StagedLearning?
+    /// The screenshot model's clock for the learning screens, so each picture shows the same dates.
+    @ObservationIgnored private var fixedClock: Int?
 
     private var files: AppFiles? { stores?.files }
     private var group: GroupFiles? { stores?.group }
@@ -173,7 +209,7 @@ final class AppModel {
 
     /// Shows synthetic paired PCs and a synthetic store, for the screenshots. Nothing connects, and nothing is written.
     func showForScreenshot(records: [PairingRecord], store: ReviewStore, permission: NotificationPermission = .notAsked,
-                           registered: Bool = false, pcOnline: Bool = false) {
+                           registered: Bool = false, pcOnline: Bool = false, learning: StagedLearning? = nil) {
         precondition(!live, "only the screenshot model shows synthetic pairings")
         self.records = records
         self.pcOnline = pcOnline
@@ -181,6 +217,13 @@ final class AppModel {
         self.store = store
         self.permission = permission
         registeredIDs = registered ? Set(records.map(\.pairingId)) : []
+        stagedLearning = learning
+    }
+
+    /// Fixes the clock of the learning screens, for the screenshots.
+    func fixClockForScreenshot(at time: Int) {
+        precondition(!live, "only the screenshot model fixes its clock")
+        fixedClock = time
     }
 
     private func makePairingFlow() -> PairingFlow {
@@ -264,6 +307,7 @@ final class AppModel {
         pcOnline = false
         roomGone = false
         evidence = nil
+        dropLearning()
         if onScreen { connect() }
     }
 
@@ -272,6 +316,7 @@ final class AppModel {
     /// The app came to the screen: open the socket (protocol section 6.8).
     func cameToScreen() {
         onScreen = true
+        screenGeneration += 1
         if unsavedReviewFiles { saveReviewFiles() }
         backoff.reset()
         connect()
@@ -285,7 +330,7 @@ final class AppModel {
     /// Drops evidence words and reply keys. Demo mode resets its copy.
     func leftScreen() async {
         onScreen = false
-        closeEvidence()
+        sceneLeftActive()
         reconnectTask?.cancel()
         reconnectTask = nil
         if store.isDemo {
@@ -638,6 +683,14 @@ final class AppModel {
 
     // MARK: Evidence words
 
+    /// The app's scene left the active state: drop every word, page and reply key at once, before iOS takes the app
+    /// switcher picture (design Table 12). The draft screen and each list ask again when the app is active again.
+    func sceneLeftActive() {
+        evidence = nil
+        dropLearning()
+        session?.dropReplyKeys()
+    }
+
     /// The detail screen of a draft opened. Asks the PC for the words while it is online (protocol section 7.2).
     func openEvidence(draftID: String) {
         closeEvidence()
@@ -649,10 +702,225 @@ final class AppModel {
         _ = sendSealed(.evidenceRequest(request))
     }
 
-    /// The detail screen closed, or the app left the screen: drop the words and every reply key.
+    /// The detail screen closed: drop the words and the reply key of its request. A learning row's key stays.
     func closeEvidence() {
+        if let requestID = evidence?.requestID { session?.dropReplyKey(requestID: requestID) }
         evidence = nil
-        session?.dropReplyKeys()
+    }
+
+    /// The number of reply keys that wait for an answer, for the hosted tests.
+    var waitingReplyKeyCount: Int { session?.waitingReplyKeyCount ?? 0 }
+
+    // MARK: Learning lists and words (protocol section 7.6)
+
+    /// The clock of the learning screens: the demo's own time in demo mode, so its weeks read as this week.
+    var learningClock: Int {
+        if let fixedClock { return fixedClock }
+        if store.isDemo, let counts = store.counts { return counts.sentAt }
+        return now()
+    }
+
+    /// The selected PC's schema revision, from `pair-accept` and each snapshot.
+    var pcSchema: Int { selectedRecord?.pcSchema ?? LastideProtocol.schemaRevision }
+
+    /// Whether a learning request can reach the PC now.
+    private var canAskPC: Bool { connection == .open && pcOnline && session != nil }
+
+    /// A list's screen opened, or the app came back to it. A list already on the way or shown stays as it is.
+    func openList(_ subject: LearningSubject) {
+        if let list = learningLists[subject], list.phase == .asking || list.phase == .shown { return }
+        if store.isDemo {
+            showDemoPage(subject, from: nil)
+            return
+        }
+        guard pcSchema >= 4 else {
+            learningLists[subject] = LearningList(subject: subject, phase: .needsUpdate)
+            return
+        }
+        if let staged = stagedLearning {
+            showStagedPage(subject, staged: staged, from: nil)
+            return
+        }
+        guard canAskPC else {
+            learningLists[subject] = LearningList(subject: subject, phase: .offline)
+            return
+        }
+        let (list, request) = LearningList.ask(subject, now: now())
+        learningLists[subject] = list
+        sendLearning(request)
+    }
+
+    /// Show More: the next page of an open list.
+    func showMore(_ subject: LearningSubject) {
+        guard var list = learningLists[subject] else { return }
+        guard let request = list.nextRequest(now: now()) else { return }
+        learningLists[subject] = list
+        if store.isDemo {
+            showDemoPage(subject, from: request)
+        } else if let staged = stagedLearning {
+            showStagedPage(subject, staged: staged, from: request)
+        } else {
+            sendLearning(request)
+        }
+    }
+
+    /// Try Again on a list that did not answer, changed too often or was refused.
+    func retryList(_ subject: LearningSubject) {
+        learningLists[subject] = nil
+        openList(subject)
+    }
+
+    /// Keeps the lists whose screens are on a navigation stack, and drops every other one.
+    func keepLists(_ subjects: Set<LearningSubject>) {
+        for subject in learningLists.keys where !subjects.contains(subject) { learningLists[subject] = nil }
+    }
+
+    /// Show My Words on one turn row (protocol 7.6). The words come live from the PC, sealed to a fresh reply key.
+    func showWords(ref: String) {
+        closeWords()
+        if store.isDemo {
+            learningWords = OpenWords(ref: ref, requestID: nil, phase: .demo, sentAt: nil)
+            return
+        }
+        guard pcSchema >= 4 else {
+            learningWords = OpenWords(ref: ref, requestID: nil, phase: .needsUpdate, sentAt: nil)
+            return
+        }
+        if let staged = stagedLearning {
+            let phase = staged.online ? (staged.words ?? .gone) : .offline
+            precondition({ if case .words = phase { return false }; return true }(), "a screenshot never shows words")
+            learningWords = OpenWords(ref: ref, requestID: nil, phase: phase, sentAt: nil)
+            return
+        }
+        guard canAskPC, var session else {
+            learningWords = OpenWords(ref: ref, requestID: nil, phase: .offline, sentAt: nil)
+            return
+        }
+        let request = session.makeLearningWordsRequest(ref: ref, now: now())
+        self.session = session
+        learningWords = OpenWords(ref: ref, requestID: request.id, phase: .asking, sentAt: now())
+        guard sendSealed(.learningWordsRequest(request)) != nil else {
+            self.session?.dropReplyKey(requestID: request.id)
+            learningWords = OpenWords(ref: ref, requestID: nil, phase: .offline, sentAt: nil)
+            return
+        }
+        let requestID = request.id
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(LearningList.answerTimeMs) * 1_000_000)
+            guard let self, var open = self.learningWords, open.requestID == requestID else { return }
+            self.session?.dropReplyKey(requestID: requestID)
+            open.requestID = nil
+            open.phase = .noAnswer
+            self.learningWords = open
+        }
+    }
+
+    /// The turn row's screen closed: drop its words and the reply key of its request.
+    func closeWords() {
+        if let requestID = learningWords?.requestID { session?.dropReplyKey(requestID: requestID) }
+        learningWords = nil
+    }
+
+    private func sendLearning(_ request: LearningRequest) {
+        guard sendSealed(.learningRequest(request)) != nil else {
+            learningLists[request.subject] = LearningList(subject: request.subject, phase: .offline)
+            return
+        }
+        let subject = request.subject, requestID = request.id
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(LearningList.answerTimeMs) * 1_000_000)
+            guard let self, var list = self.learningLists[subject], list.pendingRequestID == requestID else { return }
+            if list.checkTimeout(now: self.now()) { self.learningLists[subject] = list }
+        }
+    }
+
+    private func apply(page: LearningPage) {
+        guard var list = learningLists[page.subject] else { return }
+        let step = list.apply(page, now: now())
+        if step == .shown, let thresholds = list.thresholds { learningThresholds = thresholds }
+        learningLists[page.subject] = list
+        if case .askAgain(let request) = step { sendLearning(request) }
+    }
+
+    private func apply(words: LearningWords) {
+        guard var open = learningWords, open.requestID == words.requestId, open.ref == words.ref else { return }
+        open.requestID = nil
+        switch words.state {
+        case .words: open.phase = .words(words.words ?? "")
+        case .removed: open.phase = .removed
+        case .gone:
+            open.phase = .gone
+            // The row left the lists on the PC: every open list reads again (design Table 11).
+            for subject in learningLists.keys { learningLists[subject] = nil }
+            screenGeneration += 1
+        case .limited: open.phase = .limited(nextAt: words.nextAt ?? now())
+        }
+        learningWords = open
+    }
+
+    private func showDemoPage(_ subject: LearningSubject, from request: LearningRequest?) {
+        if demoLearning == nil {
+            do { demoLearning = try DemoLearning.load() } catch { preconditionFailure("the demo learning lists do not load: \(error)") }
+        }
+        guard let demoLearning else { return }
+        var list: LearningList
+        let ask: LearningRequest
+        if let request, let open = learningLists[subject] {
+            list = open
+            ask = request
+        } else {
+            (list, ask) = LearningList.ask(subject, now: demoLearning.asOf)
+        }
+        _ = list.apply(demoLearning.page(ask), now: demoLearning.asOf)
+        if let thresholds = list.thresholds { learningThresholds = thresholds }
+        learningLists[subject] = list
+    }
+
+    private func showStagedPage(_ subject: LearningSubject, staged: StagedLearning, from request: LearningRequest?) {
+        guard staged.online else {
+            learningLists[subject] = LearningList(subject: subject, phase: .offline)
+            return
+        }
+        if demoLearning == nil {
+            do { demoLearning = try DemoLearning.load() } catch { preconditionFailure("the demo learning lists do not load: \(error)") }
+        }
+        guard let demoLearning else { return }
+        var list: LearningList
+        let ask: LearningRequest
+        if let request, let open = learningLists[subject] {
+            list = open
+            ask = request
+        } else {
+            (list, ask) = LearningList.ask(subject, now: demoLearning.asOf)
+        }
+        var page = demoLearning.page(ask)
+        if page.state == .ok, staged.valueShift != 0 { page.value += staged.valueShift }
+        _ = list.apply(page, now: demoLearning.asOf)
+        if let thresholds = list.thresholds { learningThresholds = thresholds }
+        learningLists[subject] = list
+    }
+
+    /// Drops every list and the words, as when the PC goes offline or another PC is picked.
+    private func dropLearning() {
+        learningLists = [:]
+        learningWords = nil
+    }
+
+    /// The PC went offline: lists and words read "Appears while your PC is online", and their keys go.
+    private func learningWentOffline() {
+        for subject in learningLists.keys { learningLists[subject] = LearningList(subject: subject, phase: .offline) }
+        if let open = learningWords {
+            if let requestID = open.requestID { session?.dropReplyKey(requestID: requestID) }
+            learningWords = OpenWords(ref: open.ref, requestID: nil, phase: .offline, sentAt: nil)
+        }
+    }
+
+    /// The PC came online: each list that waited asks.
+    private func learningCameOnline() {
+        for (subject, list) in learningLists where list.phase == .offline {
+            learningLists[subject] = nil
+            openList(subject)
+        }
     }
 
     // MARK: The session socket
@@ -713,6 +981,7 @@ final class AppModel {
             pcOnline = online
             if let seen = welcome.pcLastSeenAt { noteLastSeen(seen) }
             if pcOnline { noteLastSeen(now()) }
+            if pcOnline { learningCameOnline() } else { learningWentOffline() }
             _ = sendOutbox(onlyUnstored: false)
             _ = sendSealed(.sync(SyncRequest(id: makeMessageID(), sentAt: now(), schema: LastideProtocol.schemaRevision,
                                              have: store.have)))
@@ -722,7 +991,12 @@ final class AppModel {
             guard device == .pc else { return }
             pcOnline = online
             noteLastSeen(now())
-            if !online { evidence = nil }
+            if !online {
+                evidence = nil
+                learningWentOffline()
+            } else {
+                learningCameOnline()
+            }
         case .stored(_, let seq):
             store.apply(relayFrame: frame)
             saveReviewFiles()
@@ -787,12 +1061,18 @@ final class AppModel {
                 notice = reason.displayText(for: target.targetType)
             }
         case .evidence(let words):
+            // The session forgot the reply key once it opened the answer, so an open learning row keeps its own key.
             guard var open = evidence, open.draftID == words.draftId, open.requestID == words.requestId,
                   let draft = store.draft(id: words.draftId), draft.changedAtStoreVersion == words.changedAtStoreVersion
             else { return }
             open.evidence = words
             evidence = open
-            session?.dropReplyKeys()
+        case .learningPage(let page):
+            apply(page: page)
+            return
+        case .learningWords(let words):
+            apply(words: words)
+            return
         case .error(let error):
             diagnostics.lastError = "the PC refused a message: \(error.code.rawValue), \(error.detail)"
         default:
@@ -808,6 +1088,7 @@ final class AppModel {
         connection = .closed
         pcOnline = false
         evidence = nil
+        learningWentOffline()
         session?.dropReplyKeys()
         storedSeqs = []
         droppedSeqs = []

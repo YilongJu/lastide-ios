@@ -19,6 +19,17 @@ enum ScreenshotScreen: String, CaseIterable, Sendable {
     case widgetSmall, widgetRectangular
     /// The Settings screen of the paired PC with notifications on and registered, and with them off in iOS Settings.
     case settingsNotificationsOn, settingsNotificationsOff
+    /// The learning drill-down on the demo lists (learning evidence design, check U1): this week's repeat corrections,
+    /// a turn with its violation, its group, a rule, a draft, a run, today's runs and the Weeks group.
+    case learningList, learningTurn, learningGroup, learningRule, learningDraft, learningRun, learningRuns, learningWeeks
+    /// The same PC, WORKSTATION-A, at revision 4: online, offline, and a list whose number differs from the screen's.
+    case learningPaired, learningOffline, learningMismatch
+    /// The same PC at revision 3: the numbers, and a list that asks to update Lastide on the PC.
+    case learningOlderPC, learningOlderPCList
+    /// A turn's Show My Words on the online PC, in each state that shows no words.
+    case learningWordsLimited, learningWordsRemoved, learningWordsGone, learningWordsNoAnswer
+    /// A Library rule's "Violations since approval", which opens the rule's list.
+    case libraryViolations
 
     /// True for the two widget screens, which draw the widget's view instead of the tabs.
     var isWidget: Bool { self == .widgetSmall || self == .widgetRectangular }
@@ -66,10 +77,14 @@ struct LastideApp: App {
             switch phase {
             case .active:
                 model.cameToScreen()
+            case .inactive:
+                // The app switcher takes its picture once the scene leaves the active state, so the words go first
+                // (learning evidence design, Table 12).
+                model.sceneLeftActive()
             case .background:
                 background.run { await model.leftScreen() }
-            default:
-                break
+            @unknown default:
+                model.sceneLeftActive()
             }
         }
     }
@@ -101,7 +116,14 @@ extension ScreenshotStaging {
             model.showForScreenshot(records: [try record()], store: try store(queue: false))
         case .libraryNotMeasured, .learningNotMeasured:
             model.showForScreenshot(records: [try record()], store: try store(queue: true, measured: false))
-        case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings, .widgetSmall, .widgetRectangular: break
+            model.fixClockForScreenshot(at: try DemoFixtures.load().counts.sentAt + 120_000)
+        case .learningPaired, .learningMismatch, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone,
+             .learningWordsNoAnswer, .learningOffline, .learningOlderPC, .learningOlderPCList:
+            try LearningStaging.stage(screen, model: model)
+        case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings, .widgetSmall, .widgetRectangular,
+             .learningList, .learningTurn, .learningGroup, .learningRule, .learningDraft, .learningRun, .learningRuns,
+             .learningWeeks, .libraryViolations:
+            break
         }
         return model
     }
@@ -120,14 +142,15 @@ enum ScreenshotStaging {
     }
 
     /// A synthetic record. `firstByte` makes its pairing id, PC key and phone id differ from another record's.
-    private static func record(name: String, firstByte: Int, lastSeenAgoMs: Int) throws -> PairingRecord {
+    static func record(name: String, firstByte: Int, lastSeenAgoMs: Int, pcSchema: Int = LastideProtocol.schemaRevision)
+        throws -> PairingRecord {
         let now = currentTimeMs()
         let json: [String: Any] = [
             "pairingId": Base64URL.encode(Data((firstByte..<firstByte + 16).map { UInt8($0) })),
             "relayOrigin": "https://relay.example",
             "pcKey": Base64URL.encode(Data((firstByte + 32..<firstByte + 64).map { UInt8($0) })),
             "pcName": name,
-            "pcSchema": LastideProtocol.schemaRevision,
+            "pcSchema": pcSchema,
             "phoneId": Base64URL.encode(Data((firstByte + 16..<firstByte + 32).map { UInt8($0) })),
             "pairedAt": now - 86_400_000,
             "pcLastSeenAt": now - lastSeenAgoMs,
@@ -156,6 +179,10 @@ enum ScreenshotStaging {
             counts.violationsThisWeek = nil
             counts.draftCap = nil
             counts.weeks = []
+            // Before the PC's first call nothing is measured (protocol 7.3, field notes).
+            counts.measuredFrom = .some(nil)
+            counts.repeatCorrectionsLastWeekByNow = .some(nil)
+            counts.violationsLastWeekByNow = .some(nil)
         }
         var store = ReviewStore(cache: ReviewCache(), outbox: [])
         if queue { store.apply(.queue(fixtures.queue)) }

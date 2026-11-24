@@ -314,11 +314,45 @@ public struct WeekCount: Hashable, Sendable, Codable, Validatable {
     public var weekStart: String
     public var repeatCorrections: Int
     public var violations: Int
+    /// Whether rule learning measured the week's repeat corrections, from schema revision 4. Absent from an older PC.
+    public var repeatState: LearningSpan?
+    /// Whether rule learning measured the week's violations, from schema revision 4.
+    public var violationState: LearningSpan?
+    /// The week's turns that wait for the model's answer, from schema revision 4. Null while not known yet.
+    public var waiting: Int??
+    /// The week's turns whose project cannot be read, from schema revision 4.
+    public var untraced: Int?
+
+    enum CodingKeys: String, CodingKey { case weekStart, repeatCorrections, violations, repeatState, violationState, waiting, untraced }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        weekStart = try c.decode(String.self, forKey: .weekStart)
+        repeatCorrections = try c.decode(Int.self, forKey: .repeatCorrections)
+        violations = try c.decode(Int.self, forKey: .violations)
+        repeatState = try c.decodeIfPresent(LearningSpan.self, forKey: .repeatState)
+        violationState = try c.decodeIfPresent(LearningSpan.self, forKey: .violationState)
+        waiting = try c.optionalNullable(Int.self, forKey: .waiting)
+        untraced = try c.decodeIfPresent(Int.self, forKey: .untraced)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(weekStart, forKey: .weekStart)
+        try c.encode(repeatCorrections, forKey: .repeatCorrections)
+        try c.encode(violations, forKey: .violations)
+        try c.encodeIfPresent(repeatState, forKey: .repeatState)
+        try c.encodeIfPresent(violationState, forKey: .violationState)
+        try c.encodeOptionalNullable(waiting, forKey: .waiting)
+        try c.encodeIfPresent(untraced, forKey: .untraced)
+    }
 
     func validate(_ path: String) throws {
         try Check.weekStart(weekStart, path + ".weekStart")
         try Check.integer(repeatCorrections, path + ".repeatCorrections")
         try Check.integer(violations, path + ".violations")
+        try Check.optionalInteger(waiting ?? nil, path + ".waiting")
+        try Check.optionalInteger(untraced, path + ".untraced")
     }
 }
 

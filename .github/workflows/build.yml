@@ -25,7 +25,7 @@ jobs:
   ios:
     name: App build, simulator tests, screenshots and unsigned .ipa
     runs-on: xcode-27
-    timeout-minutes: 90
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@v7
       - name: Show Xcode version
@@ -50,11 +50,11 @@ jobs:
         timeout-minutes: 15
         run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
       # The unit tests run the RFC 9180 and Lastide vectors through CryptoKit. The UI tests open every screen and state in
-      # light and dark, on demo data or a synthetic paired PC, and write one picture per capture and scheme. Seven captures
-      # run at the accessibility text size AX3. Each of the 60 launches takes about 15 s. The hosted tests run inside the app,
-      # because the Keychain and the App Group answer by the host's entitlements.
+      # light and dark, on demo data or a synthetic paired PC, and write one picture and its view tree per capture and
+      # scheme. Ten captures run at the accessibility text size AX3. Each of the 110 launches takes about 15 s. The hosted
+      # tests run inside the app, because the Keychain and the App Group answer by the host's entitlements.
       - name: Run the unit tests and the screenshot tests
-        timeout-minutes: 45
+        timeout-minutes: 75
         env:
           TEST_RUNNER_LASTIDE_SCREENSHOT_DIR: ${{ github.workspace }}/build/screenshots
         run: |
@@ -74,6 +74,10 @@ jobs:
           screens="$screens settings settingsPaired diagnostics pairingDisclosure pairingScan pairingWaiting pairingCode pairingFailed"
           screens="$screens queue-large draftDetail-large library-large ruleDetail-large learning-large settings-large settingsPaired-large"
           screens="$screens widgetSmall widgetRectangular settingsNotificationsOn settingsNotificationsOff"
+          screens="$screens learningList learningListEnd learningTurn learningTurnEnd learningGroup learningRule learningDraft"
+          screens="$screens learningRun learningRunEnd learningRuns learningWeeks learningPaired learningOffline learningMismatch"
+          screens="$screens learningOlderPC learningOlderPCList learningWordsLimited learningWordsRemoved learningWordsGone"
+          screens="$screens learningWordsNoAnswer libraryViolations learningList-large learningTurn-large learningRun-large"
           for screen in $screens; do
             for scheme in light dark; do
               if [ ! -s "build/screenshots/$screen-$scheme.png" ]; then
@@ -84,6 +88,13 @@ jobs:
           done
           ls -l build/screenshots
           exit "$missing"
+      # Check U3 of the learning evidence design: the hosted test's made-up words appear in no fixture, demo file, app
+      # source or screenshot view tree. The plant then shows that the search finds words written into a fixture.
+      - name: Check that no fixture or view tree holds the hosted test's words
+        run: |
+          set -euo pipefail
+          bash scripts/ci/check_no_words.sh App Extensions Tests/UITests Packages/LastideKit/Sources build/screenshots
+          bash scripts/ci/check_no_words.sh --plant
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -127,3 +138,8 @@ jobs:
           name: Lastide-unsigned-ipa
           path: build/Lastide-unsigned.ipa
           if-no-files-found: error
+      # Checks U2 and K2 of the learning evidence design must fail on their planted faults. The script restores the
+      # source after it, and it runs last, so no other step builds the plants.
+      - name: Run the hosted test plants
+        timeout-minutes: 30
+        run: bash scripts/ci/run_hosted_plants.sh "$SIMULATOR_UDID"

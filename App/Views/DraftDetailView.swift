@@ -29,6 +29,8 @@ struct DraftDetailView: View {
         .onChange(of: model.pcOnline) { _, online in
             if online { model.openEvidence(draftID: draftID) }
         }
+        // The words went when the app left the active state, so the screen asks again on its return.
+        .onChange(of: model.screenGeneration) { _, _ in model.openEvidence(draftID: draftID) }
         .onChange(of: model.store.draft(id: draftID) == nil) { _, gone in
             if gone { dismiss() }
         }
@@ -66,7 +68,7 @@ struct DraftDetailView: View {
                 }
                 .disabled(!editable)
                 LabeledContent("Agents", value: Words.agents(draft.agents))
-                LabeledContent("Group", value: Words.group(draft.group))
+                LabeledContent("Category", value: Words.group(draft.group))
             }
             Section("Evidence") {
                 ForEach(draft.evidence, id: \.id) { item in

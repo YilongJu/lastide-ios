@@ -5,7 +5,7 @@ import SwiftUI
 /// (plan Table 14, protocol Table 23).
 struct LibraryView: View {
     @Bindable var model: AppModel
-    @Binding var path: [String]
+    @Binding var path: [AppRoute]
     /// Opens the Settings tab from the demo banner.
     let onPair: () -> Void
     @State private var search = ""
@@ -32,7 +32,9 @@ struct LibraryView: View {
                         ContentUnavailableView.search(text: query)
                     }
                     ForEach(rules) { rule in
-                        NavigationLink(value: rule.id) { RuleRow(rule: rule, status: model.store.status(of: target(rule))) }
+                        NavigationLink(value: AppRoute.rule(rule.id)) {
+                            RuleRow(rule: rule, status: model.store.status(of: target(rule)))
+                        }
                     }
                 } footer: {
                     if model.store.omittedRules > 0 { Text(ReviewText.moreOnPC(model.store.omittedRules)) }
@@ -40,9 +42,7 @@ struct LibraryView: View {
             }
             .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search rules")
             .navigationTitle("Library")
-            .navigationDestination(for: String.self) { id in
-                RuleDetailView(model: model, ruleID: id)
-            }
+            .appDestinations(model: model)
             .accessibilityIdentifier("screen.library")
         }
     }
@@ -147,7 +147,11 @@ struct RuleDetailView: View {
             }
             Section("Counters") {
                 LabeledContent("Corrections before approval", value: "\(rule.correctionsBeforeApproval)")
-                LabeledContent("Violations since approval", value: Words.count(rule.violationsSinceApproval))
+                // The rule's list on the Learning screens (protocol Table 23).
+                NavigationLink(value: AppRoute.learning(.list(.rule(id: rule.id), expected: rule.violationsSinceApproval))) {
+                    LabeledContent("Violations since approval", value: Words.count(rule.violationsSinceApproval))
+                }
+                .accessibilityIdentifier("ruleViolations")
                 LabeledContent("Violations in the last 30 days", value: Words.count(rule.violationsLast30Days))
                 LabeledContent("Last broken", value: rule.lastSeenAt.map(Words.date) ?? "Never")
                 LabeledContent("Approved", value: rule.approvedAt.map(Words.date) ?? "Not recorded")

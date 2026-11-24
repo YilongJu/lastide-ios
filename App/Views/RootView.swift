@@ -11,13 +11,15 @@ struct RootView: View {
     @Bindable var model: AppModel
     @State private var tab: AppTab
     @State private var queuePath: [String]
-    @State private var libraryPath: [String]
+    @State private var libraryPath: [AppRoute]
+    @State private var learningPath: [AppRoute]
 
     init(model: AppModel, screenshot: ScreenshotScreen?) {
         _model = Bindable(wrappedValue: model)
         var tab = AppTab.review
         var queuePath: [String] = []
-        var libraryPath: [String] = []
+        var libraryPath: [AppRoute] = []
+        var learningPath: [AppRoute] = []
         switch screenshot {
         case .none, .queue, .queueWaiting, .queueEmpty: break
         case .draftDetail:
@@ -29,8 +31,14 @@ struct RootView: View {
         case .ruleDetail:
             tab = .library
             guard let rule = model.store.rules.first else { preconditionFailure("the demo library holds no rule") }
-            libraryPath = [rule.id]
+            libraryPath = [.rule(rule.id)]
         case .learning, .learningNotMeasured: tab = .learning
+        case .learningList, .learningTurn, .learningGroup, .learningRule, .learningDraft, .learningRun, .learningRuns,
+             .learningWeeks, .learningPaired, .learningOffline, .learningOlderPC, .learningOlderPCList, .learningMismatch,
+             .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer, .libraryViolations:
+            let staged = LearningStaging.path(for: screenshot!)
+            tab = staged.tab
+            if staged.tab == .library { libraryPath = staged.path } else { learningPath = staged.path }
         case .settings, .settingsPaired, .pairingDisclosure, .pairingScan, .pairingWaiting, .pairingCode, .pairingFailed,
              .settingsNotificationsOn, .settingsNotificationsOff:
             tab = .settings
@@ -40,6 +48,7 @@ struct RootView: View {
         _tab = State(initialValue: tab)
         _queuePath = State(initialValue: queuePath)
         _libraryPath = State(initialValue: libraryPath)
+        _learningPath = State(initialValue: learningPath)
     }
 
     var body: some View {
@@ -64,7 +73,7 @@ struct RootView: View {
                 LibraryView(model: model, path: $libraryPath, onPair: { tab = .settings })
             }
             Tab("Learning", systemImage: "chart.bar", value: AppTab.learning) {
-                LearningView(model: model, onPair: { tab = .settings })
+                LearningView(model: model, path: $learningPath, onPair: { tab = .settings })
             }
             Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
                 SettingsView(model: model)
@@ -74,6 +83,13 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.notice ?? "")
+        }
+        // A list lives while its screen is on a navigation stack (protocol 7.6).
+        .onChange(of: libraryPath + learningPath) { _, routes in
+            model.keepLists(Set(routes.compactMap { route in
+                if case .learning(let learning) = route { return learning.subject }
+                return nil
+            }))
         }
     }
 }

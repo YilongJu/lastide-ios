@@ -69,6 +69,98 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    // MARK: Learning drill-down (learning evidence design, check U1)
+
+    func testLearningList() throws {
+        try capture("learningList", waitFor: identifier("screen.learningList")) { app in
+            try self.expect(app, NSPredicate(format: "label BEGINSWITH %@", "The number: "))
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Thresholds: a message may become a correction from 0.40"))
+        }
+    }
+    func testLearningListEnd() throws {
+        try capture("learningListEnd", screen: "learningList", waitFor: identifier("screen.learningList")) { app in
+            app.swipeUp()
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", " listed"))
+        }
+    }
+    /// A turn with its violation. Show My Words in demo mode reads no words.
+    func testLearningTurn() throws {
+        try capture("learningTurn", waitFor: identifier("screen.learningTurn")) { app in
+            app.buttons["Show My Words"].firstMatch.tap()
+            try self.expect(app, NSPredicate(format: "label == %@", "Pair a PC to read your words."))
+        }
+    }
+    func testLearningTurnEnd() throws {
+        try capture("learningTurnEnd", screen: "learningTurn", waitFor: identifier("screen.learningTurn")) { app in
+            app.swipeUp()
+            app.swipeUp()
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "A rule covers a message from 0.70"))
+        }
+    }
+    func testLearningGroup() throws {
+        try capture("learningGroup", waitFor: identifier("screen.learningList")) { app in
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "No. It is the earliest mention of its group"))
+        }
+    }
+    func testLearningRule() throws { try capture("learningRule", waitFor: identifier("screen.learningList")) }
+    func testLearningDraft() throws { try capture("learningDraft", waitFor: identifier("screen.learningDraft")) }
+    /// A finished run: its Claude Code version, both models, the tokens and the cost estimate (decision E5).
+    func testLearningRun() throws {
+        try capture("learningRun", waitFor: identifier("screen.learningRun")) { app in
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "runVersion", "Claude Code 2.0.0"))
+        }
+    }
+    func testLearningRunEnd() throws {
+        try capture("learningRunEnd", screen: "learningRun", waitFor: identifier("screen.learningRun")) { app in
+            app.swipeUp()
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "estimated at API list prices"))
+        }
+    }
+    func testLearningRuns() throws { try capture("learningRuns", waitFor: identifier("screen.learningList")) }
+    /// The Weeks group of the violations chart, opened: each week with its count and state. The oldest week reads
+    /// "Not measured", because no rule was approved before it ended (decision E4).
+    func testLearningWeeks() throws {
+        try capture("learningWeeks", waitFor: identifier("screen.learning")) { app in
+            let weeks = app.descendants(matching: .any).matching(self.identifier("weeks.violations")).firstMatch
+            for _ in 0..<6 where !(weeks.exists && weeks.isHittable) { app.swipeUp() }
+            weeks.tap()
+            app.swipeUp()
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Not measured"))
+        }
+    }
+    func testLearningPaired() throws {
+        try capture("learningPaired", waitFor: identifier("screen.learning")) { app in
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "learningAge",
+                                             "From WORKSTATION-A, 2 min ago"))
+        }
+    }
+    func testLearningOffline() throws {
+        try capture("learningOffline", waitFor: identifier("listOffline")) { app in
+            try self.expect(app, NSPredicate(format: "label BEGINSWITH %@", "A message counts when a group ties it"))
+        }
+    }
+    func testLearningMismatch() throws {
+        try capture("learningMismatch", waitFor: identifier("listMismatch")) { app in
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Your PC counted"))
+        }
+    }
+    func testLearningOlderPC() throws { try capture("learningOlderPC", waitFor: identifier("learningUpdatePC")) }
+    func testLearningOlderPCList() throws { try capture("learningOlderPCList", waitFor: identifier("listUpdatePC")) }
+    func testLearningWordsLimited() throws { try words("learningWordsLimited", line: "Enough words for now. Try again at") }
+    func testLearningWordsRemoved() throws { try words("learningWordsRemoved", line: "Words removed with the transcript") }
+    func testLearningWordsGone() throws { try words("learningWordsGone", line: "This row changed on your PC.") }
+    func testLearningWordsNoAnswer() throws { try words("learningWordsNoAnswer", line: "Your PC did not answer. Try again.") }
+    /// The Library's "Violations since approval" opens the rule's list on the Learning screens.
+    func testLibraryViolations() throws { try capture("libraryViolations", waitFor: identifier("screen.learningList")) }
+
+    /// Taps Show My Words on the staged PC's turn and waits for the state's line.
+    private func words(_ name: String, line: String) throws {
+        try capture(name, waitFor: identifier("screen.learningTurn")) { app in
+            app.buttons["Show My Words"].firstMatch.tap()
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "wordsState", line))
+        }
+    }
+
     // MARK: Pair and Settings
 
     func testSettings() throws { try capture("settings", waitFor: identifier("screen.settings")) }
@@ -120,6 +212,15 @@ final class ScreenshotTests: XCTestCase {
     }
     func testLearningLarge() throws {
         try capture("learning-large", screen: "learning", waitFor: identifier("screen.learning"), large: true)
+    }
+    func testLearningListLarge() throws {
+        try capture("learningList-large", screen: "learningList", waitFor: identifier("screen.learningList"), large: true)
+    }
+    func testLearningTurnLarge() throws {
+        try capture("learningTurn-large", screen: "learningTurn", waitFor: identifier("screen.learningTurn"), large: true)
+    }
+    func testLearningRunLarge() throws {
+        try capture("learningRun-large", screen: "learningRun", waitFor: identifier("screen.learningRun"), large: true)
     }
     func testSettingsLarge() throws {
         try capture("settings-large", screen: "settings", waitFor: identifier("screen.settings"), large: true)
@@ -175,6 +276,8 @@ final class ScreenshotTests: XCTestCase {
                 let directory = URL(fileURLWithPath: folder, isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try png.write(to: directory.appendingPathComponent("\(name)-\(scheme).png"))
+                // The view tree beside each picture, which check U3 searches for words (scripts/ci/check_no_words.sh).
+                try Data(app.debugDescription.utf8).write(to: directory.appendingPathComponent("\(name)-\(scheme).tree.txt"))
             }
             try stopIfRunning(app)
         }

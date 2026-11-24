@@ -21,9 +21,20 @@ public enum MessageType: String, Sendable, CaseIterable {
     case error
     case notice
     case countUpdate = "count-update"
+    case learningRequest = "learning-request"
+    case learningPage = "learning-page"
+    case learningWordsRequest = "learning-words-request"
+    case learningWords = "learning-words"
 
-    /// The first schema revision that defines this type (protocol 7.1). Revision 3 adds `count-update`.
-    public var firstRevision: Int { self == .countUpdate ? 3 : 1 }
+    /// The first schema revision that defines this type (protocol 7.1). Revision 3 adds `count-update`, and
+    /// revision 4 adds the four learning types.
+    public var firstRevision: Int {
+        switch self {
+        case .countUpdate: return 3
+        case .learningRequest, .learningPage, .learningWordsRequest, .learningWords: return 4
+        default: return 1
+        }
+    }
 
     /// The envelope kind that carries this type.
     public var kind: EnvelopeKind {
@@ -38,7 +49,7 @@ public enum MessageType: String, Sendable, CaseIterable {
     /// Who sends this type.
     public var direction: Direction {
         switch self {
-        case .pairRequest, .decision, .sync, .evidenceRequest, .unpair: return .phoneToPC
+        case .pairRequest, .decision, .sync, .evidenceRequest, .unpair, .learningRequest, .learningWordsRequest: return .phoneToPC
         case .error: return .both
         default: return .pcToPhone
         }
@@ -48,7 +59,7 @@ public enum MessageType: String, Sendable, CaseIterable {
     public var flags: EnvelopeFlags {
         switch self {
         case .queue, .library, .acknowledgement, .decision, .unpair: return .mailbox
-        case .evidence: return .replyKey
+        case .evidence, .learningWords: return .replyKey
         default: return []
         }
     }
@@ -96,6 +107,10 @@ extension Unpair: MessageBody {}
 extension ErrorMessage: MessageBody {}
 extension Notice: MessageBody {}
 extension CountUpdate: MessageBody {}
+extension LearningRequest: MessageBody {}
+extension LearningPage: MessageBody {}
+extension LearningWordsRequest: MessageBody {}
+extension LearningWords: MessageBody {}
 
 /// One sync message of section 7, decoded and checked against every constraint of section 7.3.
 public enum SyncMessage: Hashable, Sendable {
@@ -115,6 +130,10 @@ public enum SyncMessage: Hashable, Sendable {
     case error(ErrorMessage)
     case notice(Notice)
     case countUpdate(CountUpdate)
+    case learningRequest(LearningRequest)
+    case learningPage(LearningPage)
+    case learningWordsRequest(LearningWordsRequest)
+    case learningWords(LearningWords)
 
     /// The message's `type`.
     public var type: MessageType {
@@ -135,6 +154,10 @@ public enum SyncMessage: Hashable, Sendable {
         case .error: return .error
         case .notice: return .notice
         case .countUpdate: return .countUpdate
+        case .learningRequest: return .learningRequest
+        case .learningPage: return .learningPage
+        case .learningWordsRequest: return .learningWordsRequest
+        case .learningWords: return .learningWords
         }
     }
 
@@ -156,6 +179,10 @@ public enum SyncMessage: Hashable, Sendable {
         case .error(let m): return m
         case .notice(let m): return m
         case .countUpdate(let m): return m
+        case .learningRequest(let m): return m
+        case .learningPage(let m): return m
+        case .learningWordsRequest(let m): return m
+        case .learningWords(let m): return m
         }
     }
 
@@ -208,6 +235,11 @@ public enum SyncMessage: Hashable, Sendable {
             case .error: message = .error(try decoder.decode(ErrorMessage.self, from: plaintext))
             case .notice: message = .notice(try decoder.decode(Notice.self, from: plaintext))
             case .countUpdate: message = .countUpdate(try decoder.decode(CountUpdate.self, from: plaintext))
+            case .learningRequest: message = .learningRequest(try decoder.decode(LearningRequest.self, from: plaintext))
+            case .learningPage: message = .learningPage(try decoder.decode(LearningPage.self, from: plaintext))
+            case .learningWordsRequest:
+                message = .learningWordsRequest(try decoder.decode(LearningWordsRequest.self, from: plaintext))
+            case .learningWords: message = .learningWords(try decoder.decode(LearningWords.self, from: plaintext))
             }
         } catch {
             throw MessageDecodingError(code: .badMessage, detail: "fails the schema of \(type.rawValue)",

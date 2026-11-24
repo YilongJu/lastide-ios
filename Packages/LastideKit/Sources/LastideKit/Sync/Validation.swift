@@ -84,6 +84,27 @@ enum Check {
         try that(shape, path, "date as YYYY-MM-DD")
     }
 
+    /// `probability`: a JSON number from 0 to 1.
+    static func probability(_ value: Double, _ path: String) throws {
+        try that(value.isFinite && value >= 0 && value <= 1, path, "number from 0 to 1")
+    }
+
+    static func optionalProbability(_ value: Double?, _ path: String) throws {
+        if let value { try probability(value, path) }
+    }
+
+    /// `learningRef`: `t-` and canonical base64url of 16 bytes, `^t-[A-Za-z0-9_-]{21}[AQgw]$`.
+    static func learningRef(_ value: String, _ path: String) throws {
+        let fits = value.hasPrefix("t-") && (try? b64u16(String(value.dropFirst(2)), path)) != nil
+        try that(fits, path, "turn reference as t- and base64url of 16 bytes")
+    }
+
+    /// `learningText`: 1 to 500 code points on one line.
+    static func learningText(_ value: String, _ path: String) throws {
+        try text(value, path, minimum: 1, maximum: 500)
+        try oneLine(value, path)
+    }
+
     static func unique<T: Hashable>(_ values: [T], _ path: String) throws {
         try that(Set(values).count == values.count, path, "unique items")
     }
@@ -109,7 +130,24 @@ extension KeyedDecodingContainer {
     }
 }
 
+extension KeyedDecodingContainer {
+    /// Decodes a field that may be absent and may be null: `.none` when absent, `.some(nil)` when null.
+    func optionalNullable<T: Decodable>(_ type: T.Type, forKey key: Key) throws -> T?? {
+        guard contains(key) else { return .none }
+        return .some(try decode(T?.self, forKey: key))
+    }
+}
+
 extension KeyedEncodingContainer {
+    /// Encodes a field that may be absent and may be null, as it came.
+    mutating func encodeOptionalNullable<T: Encodable>(_ value: T??, forKey key: Key) throws {
+        switch value {
+        case .none: break
+        case .some(.none): try encodeNil(forKey: key)
+        case .some(.some(let present)): try encode(present, forKey: key)
+        }
+    }
+
     /// Encodes a field that is always present and may be null.
     mutating func encodeNullable<T: Encodable>(_ value: T?, forKey key: Key) throws {
         if let value { try encode(value, forKey: key) } else { try encodeNil(forKey: key) }
