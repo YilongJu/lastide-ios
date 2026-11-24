@@ -1969,8 +1969,9 @@ App Review must see the app work without a reviewer's own PC. The plan gives App
 
 ### 8.1 Demo mode
 
-- The app opens in demo mode before any pairing. Demo mode draws bundled synthetic `queue`, `library` and `counts` messages.
-- The fixtures live in `Packages/LastideKit/Sources/LastideKit/Resources/Demo/` as `queue.json`, `library.json` and `counts.json`. The app bundles them through the package. `LastideKit`'s tests validate each fixture against section 7.3.
+- The app opens in demo mode before any pairing. Demo mode draws bundled synthetic `queue`, `library` and `counts` messages, and the learning lists of section 7.6.
+- The fixtures live in `Packages/LastideKit/Sources/LastideKit/Resources/Demo/` as `queue.json`, `library.json`, `counts.json` and `learning.json`. The app bundles them through the package. `LastideKit`'s tests validate each fixture against section 7.3, and check that each demo number equals the length of its list.
+- `scripts/relay-check/make-demo-learning.mjs` in the Lastide workspace repository writes `counts.json`, the violation counters of `library.json` and `learning.json` from the demo room's own model (section 8.2). So demo mode and the demo room show the same numbers and lists. No row holds words, and Show My Words in demo mode reads "Pair a PC to read your words."
 - Each fixture is the plaintext of one sync message, with synthetic projects, rules and dates. No fixture holds a real project, person or path.
 - Demo mode never opens a socket and never sends a decision. A decision in demo mode changes only the app's copy in memory, and the copy resets when the app leaves the screen.
 

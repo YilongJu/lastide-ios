@@ -28,7 +28,7 @@ The fixed values of protocol version 1 (Table 2).
 ```swift
 static let version: UInt8                       // 1
 static let webSocketSubprotocol: String         // "lastide-relay.1"
-static let schemaRevision: Int                  // 3, which adds count-update
+static let schemaRevision: Int                  // 4, which adds the learning lists and words
 static let ciphersuite: HPKE.Ciphersuite        // Curve25519_SHA256_ChachaPoly
 static let headerSize: Int                      // 76
 static let tagSize: Int                         // 16
@@ -254,15 +254,18 @@ The phone's sealed channel to one paired PC. Write `record` to `pairings.json` a
 init(record: PairingRecord, phoneKey: Curve25519.KeyAgreement.PrivateKey) throws
 private(set) var record: PairingRecord
 var waitingReplyKeyCount: Int
+func holdsReplyKey(for requestID: String) -> Bool
 mutating func seal(_ message: SyncMessage, now: Int) throws -> SealedEnvelope
 mutating func receive(_ frame: Data, now: Int) -> ReceiveOutcome
 mutating func makeEvidenceRequest(draftID: String, storeVersion: Int, now: Int) -> EvidenceRequest
+mutating func makeLearningWordsRequest(ref: String, now: Int) -> LearningWordsRequest
+mutating func dropReplyKey(requestID: String)
 mutating func dropReplyKeys()
 mutating func notePCSchema(_ schema: Int)
 mutating func notePCLastSeen(at time: Int)
 ```
 
-`seal` takes `decision`, `sync`, `evidence-request`, `unpair` and `error`, and stops the app on any other type. It raises `record.lastSentSeq`. Write the record before sending the bytes. `makeEvidenceRequest` keeps a reply key in memory, and the app wraps the result in `.evidenceRequest` and seals it. Call `dropReplyKeys` when the detail screen closes and when the app leaves the screen. Call `notePCSchema` with `schema` from each snapshot, and `notePCLastSeen(at:)` with `pcLastSeenAt` of `welcome` or the phone's clock at a `presence` frame.
+`seal` takes `decision`, `sync`, `evidence-request`, `unpair`, `error`, `learning-request` and `learning-words-request`, and stops the app on any other type. It raises `record.lastSentSeq`. Write the record before sending the bytes. `makeEvidenceRequest` and `makeLearningWordsRequest` each keep one reply key in memory under the request's id, and the app wraps the result in `.evidenceRequest` or `.learningWordsRequest` and seals it. A reply key opens one answer: `receive` forgets the key that opened an envelope, and answers `unusable` when the answer names another request. Call `dropReplyKey(requestID:)` when that request's screen closes, and `dropReplyKeys` when the app leaves the active state or the PC goes offline. Call `notePCSchema` with `schema` from each snapshot, and `notePCLastSeen(at:)` with `pcLastSeenAt` of `welcome` or the phone's clock at a `presence` frame.
 
 ### `enum ReceiveOutcome`
 
@@ -431,10 +434,15 @@ Each message type is `Hashable` and `Codable`, and holds `id: String` and `sentA
 | `ErrorMessage` | `inReplyTo: String?`, `code: ErrorCode`, `detail` |
 | `Notice` | `storeVersion`, `queueCount`, `draft: NoticeDraft?` |
 | `CountUpdate` | `storeVersion`, `queueCount`. Schema revision 3 |
+| `LearningRequest` | `subject: LearningSubject`, `from`, `listHash: String?`. Schema revision 4 |
+| `LearningPage` | `requestId`, `subject`, `state: LearningPageState`, `storeVersion`, `asOf`, `value`, `total`, `leftOut: LearningLeftOut`, `from`, `next: Int?`, `listHash: String?`, `thresholds: LearningThresholds`, `head: LearningHead?`, `rows: [LearningRow]`. Schema revision 4 |
+| `LearningWordsRequest` | `ref`, `replyKey`. Schema revision 4 |
+| `LearningWords` | `requestId`, `ref`, `state: LearningWordsState`, `words: String?`, `nextAt: Int?`. Schema revision 4 |
 
 ```swift
 SyncRequest.init(id: String, sentAt: Int, schema: Int, have: SnapshotVersions)
 Unpair.init(id: String, sentAt: Int)
+LearningRequest.init(id: String, sentAt: Int, subject: LearningSubject, from: Int, listHash: String?)
 ```
 
 ### Items
@@ -449,7 +457,14 @@ Unpair.init(id: String, sentAt: Int)
 | `EvidenceWords` | The words of one evidence item | `evidenceId`, `state: EvidenceState`, `words: String?` |
 | `Target` | The item a decision acts on | `targetType: TargetType`, `id`; `init(targetType: TargetType, id: String)` |
 | `CurrentItem` | The item an acknowledgement carries | `case draft(Draft)`, `case rule(Rule)`; `var target: Target` |
-| `WeekCount` | One week of the Learning charts | `weekStart`, `repeatCorrections`, `violations` |
+| `WeekCount` | One week of the Learning charts | `weekStart`, `repeatCorrections`, `violations`, and from schema revision 4 `repeatState: LearningSpan?`, `violationState: LearningSpan?`, `waiting: Int??`, `untraced: Int?` |
+| `LearningSubject` | The list one number explains | `repeatWeek(weekStart:)`, `violationWeek(weekStart:)`, `rulesApprovedWeek(weekStart:)`, `draftsToday(day:)`, `runsToday(day:)`, `rulesOn`, `group(id:)`, `rule(id:)`, `draft(id:)`, `run(id:)`; `var kind` |
+| `LearningRow` | One row of a list | `turn(LearningTurn)`, `rule(LearningRule)`, `draft(LearningDraft)`, `run(LearningRun)` |
+| `LearningHead` | The item a list explains | `group(LearningGroup)`, `rule(LearningRule)`, `draft(LearningDraft)`, `run(LearningRun)` |
+| `LearningTurn` | One message or review comment, without words | `ref`, `at`, `projectName`, `agent: Agent?`, `commentLabel: String??`, `signal: Signal?`, `category: RuleGroup?`, `kindScore`, `scopeScore`, `questionVersion`, `counted`, `countedAt`, `group: LearningGroupRef?`, `violations: [LearningViolation]` |
+| `LearningRule`, `LearningDraft`, `LearningRun`, `LearningGroup` | A row or a head | The fields of protocol section 7.3; a run carries its route, models, `tokens: LearningTokens?` and `costMicros` |
+| `LearningThresholds` | The PC's thresholds | `kind`, `coverage`, `groupReady`, `groupWait` |
+| `LearningLeftOut` | What a list leaves out | `untraced`, `older`, `afterThisWeek` |
 | `AppInfo` | The app's version and build | `version`, `build`; `init(version: String, build: Int)` |
 | `Consent` | Agreement to the disclosure | `disclosure`, `acceptedAt` |
 | `NoticeDraft` | The short draft of a phase 7 notice | `id`, `changedAtStoreVersion`, `draftKind`, `text`, `scope` |
@@ -591,6 +606,50 @@ static func moreOnPC(_ omitted: Int) -> String // "3 more on your PC"
 static func evidenceLine(_ draft: Draft) -> String   // "3 corrections, 2 projects"
 ```
 
+### `enum LearningText`
+
+Every sentence of the Learning screens, the same words as the desktop's Learning tab (learning evidence design, Tables 5, 8 and 11). The texts live in the package, so they read while the PC is offline.
+
+```swift
+static func caption(_ chart: LearningChart, weeks: [CaptionWeek], thisWeekSoFar: Int?, lastWeekByNow: Int?) -> String
+static func label(_ metric: LearningMetric) -> String
+static func line(_ metric: LearningMetric, pcName: String, finished: Int? = nil, notFinished: Int? = nil) -> String
+static func definition(_ metric: LearningMetric, thresholds: LearningThresholds?, cap: Int?) -> String
+static func listTitle(_ subject: LearningSubject) -> String
+static func listDefinition(_ subject: LearningSubject, thresholds: LearningThresholds?, cap: Int?) -> String
+static func listRule(_ subject: LearningSubject, thresholds: LearningThresholds?) -> String
+static func mismatch(counted: Int, listed: Int) -> String     // "Your PC counted 7 and listed 6."
+static func kindScore(_ value: Double, threshold: Double) -> String
+```
+
+`caption` compares complete, measured weeks only, and gives the desktop's `chartCaption` text for the same weeks. `Counts.caption(_:)`, `Counts.captionWeeks(_:)` and `Counts.number(for:)` read the counts a screen shows.
+
+### `struct LearningList`
+
+One open list in memory: its pages, and what the screen shows while the rows cannot show.
+
+```swift
+static func ask(_ subject: LearningSubject, now: Int) -> (LearningList, LearningRequest)
+init(subject: LearningSubject, phase: LearningListPhase)
+mutating func nextRequest(now: Int) -> LearningRequest?
+mutating func askAgain(now: Int) -> LearningRequest
+mutating func apply(_ page: LearningPage, now: Int) -> LearningListStep
+mutating func checkTimeout(now: Int) -> Bool
+func mismatch(expected: Int?) -> (counted: Int, listed: Int)?
+```
+
+`apply` ignores a page that answers another request. A page of state `changed`, or a later page with another list hash, asks for the first page again, at most `restartLimit` (3) times. `mismatch` is the phone's sum check of design Table 10. `LearningWordsPhase` names what Show My Words shows.
+
+### `struct DemoLearning`
+
+The learning lists of demo mode, `Resources/Demo/learning.json`, which the workspace's `scripts/relay-check/make-demo-learning.mjs` writes from the demo room's own model. No row holds words.
+
+```swift
+static func load() throws -> DemoLearning
+func page(_ request: LearningRequest) -> LearningPage
+let lists: [LearningSubject: DemoLearning.List]
+```
+
 ### `struct DemoFixtures`
 
 The bundled synthetic messages of demo mode, in `Sources/LastideKit/Resources/Demo/`.
@@ -605,7 +664,7 @@ let counts: Counts
 
 ### `enum DemoFixtureError: Error`
 
-Why a fixture could not load: `missing(String)`, `wrongType`.
+Why a fixture could not load: `missing(String)`, `wrongType`, `duplicateList(String)`, `listDoesNotAddUp(String)`.
 
 ## Push and App Attest (phase 7)
 

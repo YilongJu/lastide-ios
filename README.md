@@ -9,16 +9,16 @@ The phone and the desktop talk through a relay, and the relay sees only encrypte
 
 | Path | Holds |
 | --- | --- |
-| `App` | The SwiftUI app. `App/Core` holds the model, the launch path, the relay socket, pairing and storage. `App/Platform` holds the UIKit, push, App Attest and Keychain move parts. `App/Views` holds the five screens. `App/Shared` holds the App Group store, the Keychain store and the widget's view, which the extensions compile too |
+| `App` | The SwiftUI app. `App/Core` holds the model, the launch path, the relay socket, pairing and storage. `App/Platform` holds the UIKit, push, App Attest and Keychain move parts. `App/Views` holds the screens: the four tabs, the rule and draft details, and the learning lists and rows. `App/Shared` holds the App Group store, the Keychain store and the widget's view, which the extensions compile too |
 | `Extensions/Notifications` | The notification service extension, which opens each encrypted notice on the phone |
 | `Extensions/Widget` | The widget, which shows how many rules wait for review |
 | `Packages/LastideKit` | The Swift package with the protocol, the encryption and the sync messages, and its tests |
 | `Tests/UnitTests` | The RFC 9180, Lastide and push test vectors through CryptoKit |
 | `Tests/HostedTests` | Tests that run inside the app, because the Keychain and the App Group need the app's entitlements |
-| `Tests/UITests` | Screenshot tests for every screen and state, in light and dark, on demo data or a synthetic paired PC, and seven at the accessibility text size AX3 |
+| `Tests/UITests` | Screenshot tests for every screen and state, in light and dark, on demo data or a synthetic paired PC, and ten at the accessibility text size AX3. Each picture has its view tree beside it |
 | `project.yml` | The XcodeGen spec. `Config/Debug.xcconfig` reads the git-ignored `Local.xcconfig` |
 | `docs/protocol.md` | The phone protocol |
-| `scripts/ci` | The simulator picker, the ad hoc signing step, the export check of the three bundles' entitlements, and the plants that prove both checks fail on a bad build |
+| `scripts/ci` | The simulator picker, the ad hoc signing step, the export check of the three bundles' entitlements, and the plants that prove both checks fail on a bad build. `check_no_words.sh` searches every fixture and view tree for the hosted test's made-up words, and `run_hosted_plants.sh` shows that the learning words tests fail on their planted faults |
 | `scripts/hooks` | The pre-commit and pre-push hooks and their installer |
 
 ## Hooks before a commit and a push
