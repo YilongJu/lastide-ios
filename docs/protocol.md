@@ -13,6 +13,7 @@ Three engineers build from this document alone. One writes the Swift package `La
 - The relay is one Durable Object per PC at `/api/relay/<pairing id>`. Each socket proves its role in its first frame with a random room token. The relay stores only SHA-256 hashes of tokens.
 - A flag in the header marks the messages the relay may keep for 7 days while the recipient is offline. Evidence words never carry that flag, and they travel sealed to a one-time reply key.
 - Phase 7 adds push notifications, a widget and App Attest (section 9). Version 1 code already handles the envelope kind, the control frames and the welcome fields that phase 7 uses.
+- Schema revision 4 lets the phone open the list behind each learning number, one page at a time. The phone can also read one row's words. The words travel live, sealed to a one-time reply key (section 7.6).
 
 ## Contents
 
@@ -37,7 +38,7 @@ Table 1. The protocol takes two plan decisions as recommended and adds one decis
 
 | Decision | What the protocol does | State |
 | --- | --- | --- |
-| Plan decision 11: the mailbox | The relay keeps encrypted drafts, rules, decisions and acknowledgements for 7 days while a device is offline. Evidence words and learning counts travel only live. Section 6.9 lists every field that enters the mailbox and gives the `/privacy` sentence | Taken as the plan recommends. The plan's wording names rule text, scope, dates and project names. Each record in the mailbox also holds its ids, enum values and its own counters, and the plan's decision row must name them too |
+| Plan decision 11: the mailbox | The relay keeps encrypted drafts, rules, decisions and acknowledgements for 7 days while a device is offline. Evidence words, learning counts, learning lists and their words travel only live. Section 6.9 lists every field that enters the mailbox and gives the `/privacy` sentence | Taken as the plan recommends. The plan's wording names rule text, scope, dates and project names. Each record in the mailbox also holds its ids, enum values and its own counters, and the plan's decision row must name them too |
 | Plan decision 12: decisions while Lastide is closed | The PC applies waiting decisions at the next app start, and the phone shows "Waiting for your PC" | Taken as the plan recommends |
 | Room creation needs a signed-in Lastide account on the PC | Section 4.1. The account caps rooms at 5 and lists them for deletion | Proposed by this protocol. The plan's decision table does not hold it yet |
 
@@ -71,7 +72,7 @@ Each term keeps one meaning in this document.
 | Sync message | The JSON plaintext inside an envelope. Only the two devices read it |
 | Mailbox | Envelopes that the relay keeps for an offline recipient, for at most 7 days |
 | Slot | Byte 3 of the envelope. In a mailbox envelope, a newer envelope in the same slot replaces the older one. In a pair reply, slot 1 marks `pair-received` |
-| Reply key | A one-time X25519 key pair that the phone makes for one `evidence-request`. The PC seals the evidence words to it |
+| Reply key | A one-time X25519 key pair that the phone makes for one `evidence-request` or one `learning-words-request`. The PC seals the words of its answer to it |
 | Presence | The relay's report that a peer device came online or went offline |
 | Outbox | The phone's list of decisions that wait for their acknowledgement |
 | Draft | A rule text that waits in the review queue on the PC |
@@ -82,7 +83,11 @@ Each term keeps one meaning in this document.
 | Acknowledgement | The PC's answer to one decision: applied or refused |
 | Evidence words | The redacted words of the corrections behind a draft. They reach the phone only while both devices are online |
 | Learning counts | The numbers and weekly series of the Learning screen |
-| Schema revision | The version of the sync message JSON. This document defines revision 3. Each revision only adds to the one before. So every revision 1 or 2 message is also a revision 3 message |
+| Learning list | The rows behind one learning number: turns, rules, drafts or drafting runs. Each number is the length of its list (section 7.6) |
+| Turn reference | An opaque name of one turn on the PC: `t-` and 22 characters. A turn reference never holds a session id or a path |
+| List hash | 16 bytes of a SHA-256 over a list's rows, which shows that the list changed between two pages |
+| Learning words | The redacted words of one row of a learning list, read live from the transcript on the PC |
+| Schema revision | The version of the sync message JSON. This document defines revision 4. Each revision only adds to the one before. So every message of revision 1, 2 or 3 is also a revision 4 message |
 | HPKE | Hybrid Public Key Encryption, [RFC 9180][rfc9180] |
 | AEAD | Authenticated encryption with associated data. The cipher encrypts the plaintext and authenticates both the plaintext and the associated data |
 | Base mode | HPKE mode `0x00`. The recipient learns nothing about who sealed the message |
@@ -140,7 +145,9 @@ Table 2. Version 1 fixes every size and limit, so the three programs agree witho
 | Phones per PC | 8 |
 | Rooms per account | 5 |
 | Room life without a PC connection | 90 days |
-| Sync schema revision | 3 |
+| Sync schema revision | 4 |
+| Learning page (revision 4) | 50 rows and 64,000 bytes of plaintext at most |
+| Learning requests (revision 4) | 60 pages a minute and 60 words requests an hour, per phone |
 
 ## 1. Threat model
 
@@ -149,8 +156,8 @@ Table 2. Version 1 fixes every size and limit, so the three programs agree witho
 The protocol protects five things:
 
 1. Rule text, draft text, scopes, project names and dates.
-2. Evidence words, the most sensitive text, because they quote the person.
-3. Learning counts.
+2. Evidence words and learning words, the most sensitive text, because they quote the person.
+3. Learning counts and the learning lists behind them.
 4. The right to approve, edit, turn off and delete rules on the PC.
 5. The pairing itself: only a phone the person chose may join.
 
@@ -162,12 +169,12 @@ Table 3. A party sees metadata at most unless it holds a private key. The check 
 
 | Party | Can | Cannot |
 | --- | --- | --- |
-| The relay, its operator, or anyone who takes over the Worker or its storage | See IP addresses, times and sizes of all frames. See the pairing id, device ids, envelope kinds, flags, slots and seq values. See which devices are online, and which account created the room. See the tokens in hello frames and the stored token hashes. Drop, delay, withhold or replay frames. Delete the mailbox or the room. In phase 7, push any notification text to a paired phone, because the Worker holds the APNs key | Read a pairing message or a sync message. Change a frame unnoticed, because the header is the AEAD's associated data. Pose as the PC or as a paired phone, because Auth mode checks static keys. Pair a phone without the QR code and the person's typed code. Search for a pair request that matches a code it saw. The code exists only after the PC commits to one request. Learn the check code or any HPKE key. Read evidence words at rest or from a recording. They never enter the mailbox, and the phone deletes their reply key. Get a held decision applied more than 8 days after the phone sent it. Make a notification action act on fields that the extension did not open. Make an action act under text that the extension did not set |
+| The relay, its operator, or anyone who takes over the Worker or its storage | See IP addresses, times and sizes of all frames. See the pairing id, device ids, envelope kinds, flags, slots and seq values. See which devices are online, and which account created the room. See the tokens in hello frames and the stored token hashes. Drop, delay, withhold or replay frames. Delete the mailbox or the room. In phase 7, push any notification text to a paired phone, because the Worker holds the APNs key | Read a pairing message or a sync message. Change a frame unnoticed, because the header is the AEAD's associated data. Pose as the PC or as a paired phone, because Auth mode checks static keys. Pair a phone without the QR code and the person's typed code. Search for a pair request that matches a code it saw. The code exists only after the PC commits to one request. Learn the check code or any HPKE key. Read evidence words or learning words at rest or from a recording. They never enter the mailbox, and the phone deletes their reply key. Get a held decision applied more than 8 days after the phone sent it. Make a notification action act on fields that the extension did not open. Make an action act under text that the extension did not set |
 | A network attacker between a device and the relay | See that a device talks to the relay, when, and how much. Block traffic | Read hello frames or envelopes, because TLS covers them. With a trusted root certificate on the device, the attacker gets the relay's view above and nothing more |
 | Someone who photographs the QR code | Within 120 s, open the pairing socket before the person's phone does. That stops the person's pairing, and the person starts again with a new code. Seal messages to the PC key at any time | Complete a pairing. The PC answers one pair request per code. The person's phone shows a code only after the PC answers that phone's own request. A code that the person types matches the attacker's request at most 3 times in 1,000,000 per QR code. Use the ticket after 120 s, or after a phone used it. Join the room, because they lack a token. Get a sealed message accepted. The PC opens only pair requests that answer its open QR code, and Auth-mode messages from paired phones |
 | Someone who finds a lost phone, without its passcode | Read rule text on the lock screen in phase 7, only when the person turned on "Show rule text while iPhone is locked" and iOS shows previews Always. Otherwise read only the count of waiting rules | Read the cached data, because its files open only while the phone is unlocked. Read the keys while the phone has not been unlocked since its last restart. After the first unlock, the system can read the keys until the next restart. The phase 7 extension needs that to decrypt on a locked phone. Approve or delete from the lock screen, because both actions require an unlocked device |
-| Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a project file that git may track: a file from before the PC kept its rule files out of git, or the project's own `CLAUDE.md` or `AGENTS.md`. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
-| Anyone who holds a revoked phone's keys and token | Read what the phone stored before the revoke. Open the envelopes it recorded before the revoke, except evidence words | Connect, because the relay deleted its token hash. The phone bridge repeats `remove-phone` until the relay confirms it. Receive new messages, because the PC stopped sealing to its key and the relay deleted its mailbox. Get a frame accepted, because the PC deleted its phone key. Pair again without a new QR code on the PC |
+| Someone who finds a lost phone and knows its passcode | Until the person revokes the phone: read cached drafts and rules. Ask for evidence words while the PC is online. Ask for the learning lists while the PC is online. Ask for the words of one row at a time, at most 60 rows an hour. So the words of 12 weeks of corrections and violations are within reach. Send decisions. An approval or an edit can carry up to 500 code points of new rule text. Lastide writes that text into the agents' instruction files. So the finder can give instructions to the person's coding agents. A decision sent while Lastide is closed applies at the next app start, before the person can click Revoke. The desktop lists every applied phone decision, live or from the mailbox, until the person clears it. Each entry names the phone, shows the text before and after, and offers Undo and Revoke. A notice points the person to the list | Approve hook templates or deny rules. Change a project file that git may track: a file from before the PC kept its rule files out of git, or the project's own `CLAUDE.md` or `AGENTS.md`. The PC accepts those decisions only on the desktop. Hide text from the person, because the PC refuses hidden code points and `@` file imports (section 7.4, check 7). Act after Revoke on the PC |
+| Anyone who holds a revoked phone's keys and token | Read what the phone stored before the revoke. Open the envelopes it recorded before the revoke, except evidence words and learning words | Connect, because the relay deleted its token hash. The phone bridge repeats `remove-phone` until the relay confirms it. Receive new messages, because the PC stopped sealing to its key and the relay deleted its mailbox. Get a frame accepted, because the PC deleted its phone key. Pair again without a new QR code on the PC |
 | Anyone who knows the pairing id, such as a QR code viewer or a revoked phone | Open sockets to the room that wait for `hello`. Each such socket closes the oldest waiting socket when the room's limit is reached | Join the room, because joining needs a token or an open ticket. Hold a waiting socket for more than 10 s. Hold more than 2 waiting sockets from one client address |
 | APNs (phase 7) | See the device token, the time and the size of each push. See the clear envelope header inside `lastide.e`: both device ids, the slot and the seq. The seq is about the PC's clock in ms. See the phone's device id in `thread-id` and `apns-collapse-id` | Read the push body, because the PC seals it to the phone key |
 
@@ -570,7 +577,7 @@ Table 12. Each failure after a good open maps to one error code, and an error ne
 1. Build the plaintext JSON and check it against the schema.
 2. Keep the plaintext at or below 262,052 bytes. The PC keeps snapshots under 240,000 bytes (section 7.2).
 3. Take the next `seq` (section 5.4).
-4. Set up HPKE with the info string from Table 11. Use the sender's static private key and the recipient's static public key. For `evidence`, use the reply key in place of the recipient's static key.
+4. Set up HPKE with the info string from Table 11. Use the sender's static private key and the recipient's static public key. For `evidence` and `learning-words`, use the request's reply key in place of the recipient's static key.
 5. Build the 76-byte header from the context's `enc`.
 6. Seal the plaintext with the header as associated data.
 7. Send header and ciphertext as one binary frame.
@@ -840,7 +847,7 @@ When the app returns to the screen, it resets the reconnect wait to 1 s. After `
 
 The mailbox lets a review go on while one side is offline.
 
-What may enter. Only kind 3 envelopes with the MAILBOX flag. Table 20 gives the flag to `queue`, `library`, `acknowledgement`, `decision` and `unpair`. Evidence words, the draft rationale and the learning counts never carry the flag. The relay cannot read the plaintext, so the sender's code enforces the rule. The receiver checks it too: step 7 of section 5.6 refuses a message whose flags differ from Table 20. The flag is part of the associated data, so the relay cannot flip it.
+What may enter. Only kind 3 envelopes with the MAILBOX flag. Table 20 gives the flag to `queue`, `library`, `acknowledgement`, `decision` and `unpair`. Evidence words, the draft rationale, the learning counts, the learning pages and the learning words never carry the flag. The relay cannot read the plaintext, so the sender's code enforces the rule. The receiver checks it too: step 7 of section 5.6 refuses a message whose flags differ from Table 20. The flag is part of the associated data, so the relay cannot flip it.
 
 Table 18. The mailbox holds only drafts, rules and decisions: their text, scopes, dates, project names, ids, enum values and counters.
 
@@ -1038,6 +1045,7 @@ While phase 7 is off, the route answers `404 {"error": "unsupported"}`. The rate
 - The phone never shows full paths. Every project appears by its folder name alone, as `projectName` or `projectNames`.
 - Revision 2 adds three counts to `counts`: `draftingRunsToday`, `draftingRunCap` and `importRulesWaiting`. It also lets an evidence item of a review comment carry `agent: null` and `commentLabel`. The PC sends these only to a phone of revision 2 or later. A phone of revision 1 gets `counts` without the three fields and a draft without its review comment items.
 - Revision 3 adds the `count-update` message, a kind 4 envelope in slot 1 (section 9.3). The PC sends it only to a phone of revision 3 or later.
+- Revision 4 adds the four learning types of section 7.6. Revision 4 also adds six fields to `counts` and four to each item of `counts.weeks`. The PC sends these only to a phone of revision 4 or later. A phone sends the two learning requests only to a PC whose `pcSchema` is 4 or more. An older PC answers them with `unknownType`.
 - Ids of drafts and rules come from the rule store, and the phone treats them as opaque strings. Evidence ids are opaque strings that the PC assigns per change of a draft. They never contain a session id or a path.
 
 ### 7.2 Message list
@@ -1062,8 +1070,12 @@ Table 20. Each sync message type fixes its direction, its flags and its slot.
 | `error` | Both ways | 3 | None | 0 | A message that opened but could not be used (section 5.6) |
 | `notice`, phase 7 | PC to phone | 4 | None | 0 | A new draft while the phone is offline |
 | `count-update`, phase 7 | PC to phone | 4 | None | 1 | A count change while the phone is offline |
+| `learning-request`, revision 4 | Phone to PC | 3 | None | 0 | The person opens a learning list, or asks for its next page |
+| `learning-page`, revision 4 | PC to phone | 3 | None | 0 | One answer per `learning-request` |
+| `learning-words-request`, revision 4 | Phone to PC | 3 | None | 0 | The person taps Show My Words on one row |
+| `learning-words`, revision 4 | PC to phone | 3 | REPLY_KEY | 0 | One answer per `learning-words-request` |
 
-The PC sends `queue`, `library` and `counts` to every paired phone. The PC sends `acknowledgement`, `evidence` and `error` only to the phone whose message they answer, which the envelope header's `sender` names.
+The PC sends `queue`, `library` and `counts` to every paired phone. The PC sends `acknowledgement`, `evidence`, `learning-page`, `learning-words` and `error` only to the phone whose message they answer. The envelope header's `sender` names that phone.
 
 A `sync` asks for fresh snapshots. The PC skips `queue` when its current store version equals `have.queue`, and it skips `library` when its current store version equals `have.library`. The PC always sends `counts`, because the counts change with time as well as with the store.
 
@@ -1084,8 +1096,8 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://relay.example/schemas/lastide-sync-3.json",
-  "title": "Lastide sync messages, schema revision 3",
+  "$id": "https://relay.example/schemas/lastide-sync-4.json",
+  "title": "Lastide sync messages, schema revision 4",
   "oneOf": [
     { "$ref": "#/$defs/pairRequest" },
     { "$ref": "#/$defs/pairReceived" },
@@ -1102,7 +1114,11 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
     { "$ref": "#/$defs/unpair" },
     { "$ref": "#/$defs/error" },
     { "$ref": "#/$defs/notice" },
-    { "$ref": "#/$defs/countUpdate" }
+    { "$ref": "#/$defs/countUpdate" },
+    { "$ref": "#/$defs/learningRequest" },
+    { "$ref": "#/$defs/learningPage" },
+    { "$ref": "#/$defs/learningWordsRequest" },
+    { "$ref": "#/$defs/learningWords" }
   ],
   "$defs": {
     "b64u16": { "type": "string", "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$" },
@@ -1347,6 +1363,12 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
         "draftingRunsToday": { "$ref": "#/$defs/count" },
         "draftingRunCap": { "$ref": "#/$defs/count" },
         "importRulesWaiting": { "$ref": "#/$defs/count" },
+        "rulesApprovedThisWeek": { "$ref": "#/$defs/count" },
+        "repeatCorrectionsLastWeekByNow": { "$ref": "#/$defs/countOrNull" },
+        "violationsLastWeekByNow": { "$ref": "#/$defs/countOrNull" },
+        "draftingRunsFinishedToday": { "$ref": "#/$defs/count" },
+        "measuredFrom": { "$ref": "#/$defs/timeOrNull" },
+        "today": { "$ref": "#/$defs/learningDate" },
         "weeks": {
           "type": "array", "maxItems": 12,
           "items": {
@@ -1354,7 +1376,11 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
             "properties": {
               "weekStart": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
               "repeatCorrections": { "$ref": "#/$defs/count" },
-              "violations": { "$ref": "#/$defs/count" }
+              "violations": { "$ref": "#/$defs/count" },
+              "repeatState": { "$ref": "#/$defs/learningSpan" },
+              "violationState": { "$ref": "#/$defs/learningSpan" },
+              "waiting": { "$ref": "#/$defs/countOrNull" },
+              "untraced": { "$ref": "#/$defs/count" }
             }
           }
         }
@@ -1503,6 +1529,267 @@ The phone bridge checks every constraint of the schema in code, without Ajv at r
         "storeVersion": { "$ref": "#/$defs/storeVersion" },
         "queueCount": { "$ref": "#/$defs/count" }
       }
+    },
+    "learningRef": { "type": "string", "pattern": "^t-[A-Za-z0-9_-]{21}[AQgw]$" },
+    "learningDate": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "learningSpan": { "enum": ["measured", "partial", "notMeasured"] },
+    "itemIdOrNull": { "oneOf": [{ "$ref": "#/$defs/itemId" }, { "type": "null" }] },
+    "timeOrNull": { "oneOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }] },
+    "categoryOrNull": { "oneOf": [{ "$ref": "#/$defs/group" }, { "type": "null" }] },
+    "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+    "probabilityOrNull": { "oneOf": [{ "$ref": "#/$defs/probability" }, { "type": "null" }] },
+    "shortNameOrNull": { "oneOf": [{ "type": "string", "minLength": 1, "maxLength": 64 }, { "type": "null" }] },
+    "learningText": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\r\\n]+$" },
+    "groupState": { "enum": ["ready", "wait", "split", "drafting", "drafted", "approved", "rejected", "deleted", "reinforced", "conflict"] },
+    "learningSubject": {
+      "oneOf": [
+        { "type": "object", "required": ["kind", "weekStart"],
+          "properties": { "kind": { "enum": ["repeatWeek", "violationWeek", "rulesApprovedWeek"] },
+                          "weekStart": { "$ref": "#/$defs/learningDate" } } },
+        { "type": "object", "required": ["kind", "day"],
+          "properties": { "kind": { "enum": ["draftsToday", "runsToday"] }, "day": { "$ref": "#/$defs/learningDate" } } },
+        { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "rulesOn" } } },
+        { "type": "object", "required": ["kind", "id"],
+          "properties": { "kind": { "enum": ["group", "rule", "draft", "run"] }, "id": { "$ref": "#/$defs/itemId" } } }
+      ]
+    },
+    "learningGroupRef": {
+      "type": "object",
+      "required": ["id", "size", "state", "oneRulePrevents", "joinedBy", "firstRef", "firstAt", "draftId", "ruleId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/itemId" },
+        "size": { "$ref": "#/$defs/count" },
+        "state": { "$ref": "#/$defs/groupState" },
+        "oneRulePrevents": { "$ref": "#/$defs/probabilityOrNull" },
+        "joinedBy": { "enum": ["lead", "words", "model", null] },
+        "firstRef": { "oneOf": [{ "$ref": "#/$defs/learningRef" }, { "type": "null" }] },
+        "firstAt": { "$ref": "#/$defs/timeOrNull" },
+        "draftId": { "$ref": "#/$defs/itemIdOrNull" },
+        "ruleId": { "$ref": "#/$defs/itemIdOrNull" }
+      }
+    },
+    "learningViolation": {
+      "type": "object",
+      "required": ["ruleId", "ruleText", "textCut", "ruleState", "ruleApprovedAt", "covered", "repeats", "contradicts", "answeredAt"],
+      "properties": {
+        "ruleId": { "$ref": "#/$defs/itemId" },
+        "ruleText": { "$ref": "#/$defs/learningText" },
+        "textCut": { "type": "boolean" },
+        "ruleState": { "enum": ["on", "off", "deleted"] },
+        "ruleApprovedAt": { "$ref": "#/$defs/time" },
+        "covered": { "$ref": "#/$defs/probabilityOrNull" },
+        "repeats": { "$ref": "#/$defs/probabilityOrNull" },
+        "contradicts": { "$ref": "#/$defs/probability" },
+        "answeredAt": { "$ref": "#/$defs/time" }
+      }
+    },
+    "learningTurn": {
+      "type": "object",
+      "required": ["rowType", "ref", "at", "projectName", "agent", "signal", "category", "kindScore", "scopeScore",
+                   "questionVersion", "counted", "countedAt", "group", "violations"],
+      "properties": {
+        "rowType": { "const": "turn" },
+        "ref": { "$ref": "#/$defs/learningRef" },
+        "at": { "$ref": "#/$defs/time" },
+        "projectName": { "$ref": "#/$defs/projectName" },
+        "agent": { "enum": ["claudeCode", "codex", null] },
+        "commentLabel": { "oneOf": [{ "type": "string", "pattern": "^C[0-9]{1,9}$" }, { "type": "null" }] },
+        "signal": { "oneOf": [{ "$ref": "#/$defs/signal" }, { "type": "null" }] },
+        "category": { "$ref": "#/$defs/categoryOrNull" },
+        "kindScore": { "$ref": "#/$defs/probabilityOrNull" },
+        "scopeScore": { "$ref": "#/$defs/probabilityOrNull" },
+        "questionVersion": { "$ref": "#/$defs/countOrNull" },
+        "counted": { "type": "boolean" },
+        "countedAt": { "$ref": "#/$defs/timeOrNull" },
+        "group": { "oneOf": [{ "$ref": "#/$defs/learningGroupRef" }, { "type": "null" }] },
+        "violations": { "type": "array", "items": { "$ref": "#/$defs/learningViolation" }, "maxItems": 8 }
+      },
+      "if": { "type": "object", "required": ["agent"], "properties": { "agent": { "const": null } } },
+      "then": { "type": "object", "required": ["commentLabel"],
+                "properties": { "commentLabel": { "type": ["string", "null"] }, "signal": { "enum": ["reviewComment", null] } } }
+    },
+    "learningRule": {
+      "type": "object",
+      "required": ["rowType", "id", "text", "textCut", "state", "source", "category", "scope", "approvedAt",
+                   "correctionsBeforeApproval", "violations", "draftId", "runId"],
+      "properties": {
+        "rowType": { "const": "rule" },
+        "id": { "$ref": "#/$defs/itemId" },
+        "text": { "$ref": "#/$defs/learningText" },
+        "textCut": { "type": "boolean" },
+        "state": { "enum": ["on", "off", "deleted"] },
+        "source": { "enum": ["learned", "imported", "builtIn"] },
+        "category": { "$ref": "#/$defs/group" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "approvedAt": { "$ref": "#/$defs/time" },
+        "correctionsBeforeApproval": { "$ref": "#/$defs/count" },
+        "violations": { "$ref": "#/$defs/countOrNull" },
+        "draftId": { "$ref": "#/$defs/itemIdOrNull" },
+        "runId": { "$ref": "#/$defs/itemIdOrNull" }
+      }
+    },
+    "learningDraft": {
+      "type": "object",
+      "required": ["rowType", "id", "draftKind", "status", "text", "textCut", "createdAt", "category", "evidenceCount", "groupId", "runId"],
+      "properties": {
+        "rowType": { "const": "draft" },
+        "id": { "$ref": "#/$defs/itemId" },
+        "draftKind": { "$ref": "#/$defs/draftKind" },
+        "status": { "enum": ["waiting", "approved", "rejected", "deleted"] },
+        "text": { "oneOf": [{ "$ref": "#/$defs/learningText" }, { "type": "null" }] },
+        "textCut": { "type": "boolean" },
+        "createdAt": { "$ref": "#/$defs/time" },
+        "category": { "$ref": "#/$defs/group" },
+        "evidenceCount": { "$ref": "#/$defs/count" },
+        "groupId": { "$ref": "#/$defs/itemIdOrNull" },
+        "runId": { "$ref": "#/$defs/itemIdOrNull" }
+      }
+    },
+    "learningTokens": {
+      "type": "object",
+      "required": ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h"],
+      "properties": {
+        "input": { "$ref": "#/$defs/count" },
+        "output": { "$ref": "#/$defs/count" },
+        "cacheRead": { "$ref": "#/$defs/count" },
+        "cacheWrite5m": { "$ref": "#/$defs/countOrNull" },
+        "cacheWrite1h": { "$ref": "#/$defs/countOrNull" }
+      }
+    },
+    "learningRun": {
+      "type": "object",
+      "required": ["rowType", "id", "route", "job", "state", "outcome", "startedAt", "endedAt", "version", "requestedModel",
+                   "reportedModel", "tokens", "costMicros", "costMissing", "groups", "drafts", "recordedDrafts", "reinforced", "conflicts", "skipped"],
+      "properties": {
+        "rowType": { "const": "run" },
+        "id": { "$ref": "#/$defs/itemId" },
+        "route": { "enum": ["claudeCode", "terminal", "apiKey"] },
+        "job": { "enum": ["draft", "importMerge"] },
+        "state": { "enum": ["running", "finished", "failed", "lost"] },
+        "outcome": { "enum": ["finished", "payingCredential", "status", "overage", "extraUsage", "anotherModel",
+                              "unreadable", "hiddenText", "cancelled", "timedOut", "keyRefused", null] },
+        "startedAt": { "$ref": "#/$defs/time" },
+        "endedAt": { "$ref": "#/$defs/timeOrNull" },
+        "version": { "$ref": "#/$defs/shortNameOrNull" },
+        "requestedModel": { "$ref": "#/$defs/shortNameOrNull" },
+        "reportedModel": { "$ref": "#/$defs/shortNameOrNull" },
+        "tokens": { "oneOf": [{ "$ref": "#/$defs/learningTokens" }, { "type": "null" }] },
+        "costMicros": { "$ref": "#/$defs/countOrNull" },
+        "costMissing": { "enum": ["modelNotKept", "noListPrice", "cacheSplitNotKept", "noUsage", null] },
+        "groups": { "$ref": "#/$defs/count" },
+        "drafts": { "$ref": "#/$defs/count" },
+        "recordedDrafts": { "$ref": "#/$defs/countOrNull" },
+        "reinforced": { "$ref": "#/$defs/count" },
+        "conflicts": { "$ref": "#/$defs/count" },
+        "skipped": { "$ref": "#/$defs/count" }
+      }
+    },
+    "learningGroup": {
+      "type": "object",
+      "required": ["rowType", "id", "size", "category", "state", "oneRulePrevents", "formedAt", "draftId", "ruleId"],
+      "properties": {
+        "rowType": { "const": "group" },
+        "id": { "$ref": "#/$defs/itemId" },
+        "size": { "$ref": "#/$defs/count" },
+        "category": { "$ref": "#/$defs/categoryOrNull" },
+        "state": { "$ref": "#/$defs/groupState" },
+        "oneRulePrevents": { "$ref": "#/$defs/probabilityOrNull" },
+        "formedAt": { "$ref": "#/$defs/timeOrNull" },
+        "draftId": { "$ref": "#/$defs/itemIdOrNull" },
+        "ruleId": { "$ref": "#/$defs/itemIdOrNull" }
+      }
+    },
+    "learningThresholds": {
+      "type": "object", "required": ["kind", "coverage", "groupReady", "groupWait"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/probability" },
+        "coverage": { "$ref": "#/$defs/probability" },
+        "groupReady": { "$ref": "#/$defs/probability" },
+        "groupWait": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "learningRequest": {
+      "type": "object", "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["subject", "from", "listHash"],
+      "properties": {
+        "type": { "const": "learning-request" },
+        "subject": { "$ref": "#/$defs/learningSubject" },
+        "from": { "$ref": "#/$defs/count" },
+        "listHash": { "oneOf": [{ "$ref": "#/$defs/b64u16" }, { "type": "null" }] }
+      }
+    },
+    "learningPage": {
+      "type": "object", "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["requestId", "subject", "state", "storeVersion", "asOf", "value", "total", "leftOut", "from", "next",
+                   "listHash", "thresholds", "head", "rows"],
+      "properties": {
+        "type": { "const": "learning-page" },
+        "requestId": { "$ref": "#/$defs/b64u16" },
+        "subject": { "$ref": "#/$defs/learningSubject" },
+        "state": { "enum": ["ok", "changed", "gone", "limited", "blocked"] },
+        "storeVersion": { "$ref": "#/$defs/storeVersion" },
+        "asOf": { "$ref": "#/$defs/time" },
+        "value": { "$ref": "#/$defs/count" },
+        "total": { "$ref": "#/$defs/count" },
+        "leftOut": {
+          "type": "object", "required": ["untraced", "older", "afterThisWeek"],
+          "properties": { "untraced": { "$ref": "#/$defs/count" }, "older": { "$ref": "#/$defs/count" }, "afterThisWeek": { "$ref": "#/$defs/count" } }
+        },
+        "from": { "$ref": "#/$defs/count" },
+        "next": { "$ref": "#/$defs/countOrNull" },
+        "listHash": { "oneOf": [{ "$ref": "#/$defs/b64u16" }, { "type": "null" }] },
+        "thresholds": { "$ref": "#/$defs/learningThresholds" },
+        "head": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/learningGroup" },
+            { "$ref": "#/$defs/learningRule" },
+            { "$ref": "#/$defs/learningDraft" },
+            { "$ref": "#/$defs/learningRun" }
+          ]
+        },
+        "rows": {
+          "type": "array", "maxItems": 50,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/learningTurn" },
+              { "$ref": "#/$defs/learningRule" },
+              { "$ref": "#/$defs/learningDraft" },
+              { "$ref": "#/$defs/learningRun" }
+            ]
+          }
+        }
+      },
+      "if": { "type": "object", "properties": { "state": { "const": "ok" } } },
+      "then": { "type": "object", "properties": { "listHash": { "type": "string" } } },
+      "else": { "type": "object", "properties": { "rows": { "type": "array", "maxItems": 0 }, "head": { "type": "null" },
+                                                  "next": { "type": "null" }, "listHash": { "type": "null" } } }
+    },
+    "learningWordsRequest": {
+      "type": "object", "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["ref", "replyKey"],
+      "properties": {
+        "type": { "const": "learning-words-request" },
+        "ref": { "$ref": "#/$defs/learningRef" },
+        "replyKey": { "$ref": "#/$defs/b64u32" }
+      }
+    },
+    "learningWords": {
+      "type": "object", "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["requestId", "ref", "state", "words", "nextAt"],
+      "properties": {
+        "type": { "const": "learning-words" },
+        "requestId": { "$ref": "#/$defs/b64u16" },
+        "ref": { "$ref": "#/$defs/learningRef" },
+        "state": { "enum": ["words", "removed", "gone", "limited"] },
+        "words": { "type": ["string", "null"], "maxLength": 300 },
+        "nextAt": { "$ref": "#/$defs/timeOrNull" }
+      },
+      "oneOf": [
+        { "type": "object", "properties": { "state": { "const": "words" }, "words": { "type": "string", "minLength": 1 }, "nextAt": { "type": "null" } } },
+        { "type": "object", "properties": { "state": { "enum": ["removed", "gone"] }, "words": { "type": "null" }, "nextAt": { "type": "null" } } },
+        { "type": "object", "properties": { "state": { "const": "limited" }, "words": { "type": "null" }, "nextAt": { "type": "integer" } } }
+      ]
     }
   }
 }
@@ -1523,6 +1810,30 @@ Field notes that the schema cannot state:
 - `pcName` is the PC name from Lastide Settings, "My PC" by default, and never the Windows computer name. In phase 7 it becomes the notification title.
 - The PC sends `notice.draft` only with the draft's whole text, which holds at most 600 code points. The push envelope must then fit in 2,800 bytes. Otherwise it sends `draft` as null. A lock-screen Approve applies the draft's whole text, so the phone never shows a cut of it.
 - `notice.queueCount` and `count-update.queueCount` hold the count that the phone's badge shows. That count is the drafts of the queue snapshot at the phone's revision, plus `omitted`.
+- `rulesApproved` counts the rules that are on now, imports included. `rulesApprovedThisWeek` counts the rules approved since Monday that the person has not deleted.
+- `draftsToday` counts the drafts that a drafting run wrote since the PC's local midnight. An import draft never counts. `draftingRunsFinishedToday` counts the runs of `draftingRunsToday` that finished.
+- `today` is the PC's local date when it built the counts. The phone names it as the `day` of `draftsToday` and `runsToday`, and in the headings once the day has ended.
+- `repeatCorrectionsLastWeekByNow` and `violationsLastWeekByNow` count last week's turns typed before this weekday and clock time.
+- `measuredFrom` is the time from which Lastide asked about turns. `measuredFrom` is `null` before the first question, and every week then reads `notMeasured`.
+- A week's `repeatState` and `violationState` read `notMeasured` when Lastide asked about none of its turns. `violationState` also reads `notMeasured` when no rule existed to violate. They read `partial` for the current week, a week that holds `measuredFrom`, and a week whose turns still wait. A bar of a week that is not measured reads 0, and the phone does not draw it.
+- `waiting` counts a week's turns that wait for their question. `waiting` is `null` while the PC does not know the count yet. `untraced` counts turns that neither the number nor the list holds, because Lastide cannot read their project or transcript.
+- While a file behind the bars does not read, `counts.weeks` is empty. The numbers that rest on that file are null. `draftingRunsToday` is absent while the runs file does not read.
+- A `learningRef` is `t-` and base64url of the first 16 bytes of SHA-256(`"lastide/learning-ref"` || 0x00 || the turn id in UTF-8). The phone never learns a turn id, because a Codex turn id holds a session id.
+- `listHash` is base64url of the first 16 bytes of a SHA-256. The hash covers the JSON array of every row of the list, in list order.
+- `value` is the number on the screen, and equals `total` plus `leftOut.older`. `total` is the number of rows of the whole list. `leftOut.older` is above 0 for the subjects `group`, `rule` and `draft` only. A draft keeps 20 evidence items, and a rule and a group keep 90 days of details.
+- `leftOut.untraced` counts turns that neither `value` nor `total` holds. `leftOut.afterThisWeek` counts turns dated after this week, as a clock set back dates one. The lists of this week hold that count, and every other list holds 0.
+- A page whose `state` is not `ok` holds 0 in `value`, `total` and `leftOut`, and the phone ignores them.
+- A subject carries the fields of its kind. The PC reads only those fields and ignores any other, as section 7.1 says.
+- An `id` of the subject `group` is any key of a joined group. The answer's `head.id` is the key of its newest line.
+- `counted` is false only for the earliest member of a joined group, in the subject `group`. In the subject `draft`, `counted` is true for each turn that counts in its own week. `countedAt` is the time the turn first counted.
+- In the subject `draft`, an evidence turn that left the PC's corrections keeps its date, project, agent and signal. Its scores, category and group are `null`.
+- `commentLabel` is `null` for a review comment whose label is gone. `signal` is `null` when the PC did not keep one. `category` and the scores are `null` for a violation whose kind answer is gone.
+- A score keeps the number of its own `questionVersion`. `thresholds` holds the PC's current values, against which the phone shows each score.
+- Each text of a row holds one line. A line break becomes a space, and a text over 500 code points keeps 499 and the ellipsis U+2026. `textCut` says so.
+- `learningDraft.text` is `null` for a merge draft of an import batch, because an import never travels (section 7.2). A row of `draftsToday` never holds an import draft.
+- A run's `state` reads `lost` when Lastide restarted before the run ended. `running` marks the run that runs now. `costMicros` is millionths of a dollar at API list prices. `costMissing` names the reason when `costMicros` is `null`. `recordedDrafts` is the run's own count of drafts when it differs from `drafts`, and `null` otherwise.
+- `version` is the Claude Code version of a run. `requestedModel` and `reportedModel` are the model ids that the run asked for and that answered. Each is `null` when the PC did not keep it.
+- `learning-words.words` holds at most 300 code points on one line. The PC redacts the words as it does for `evidence`.
 
 ### 7.4 Decisions: what the PC applies and refuses
 
@@ -1579,15 +1890,78 @@ While the PC is offline, the decision waits in the mailbox and the phone shows "
 
 ### 7.5 How the screens use the messages
 
-Table 23. Each phone screen reads one snapshot and sends decisions, and only the rule detail screen asks for evidence words.
+Table 23. Each phone screen reads one snapshot and sends decisions. The rule detail screen asks for evidence words, and the learning screens ask for lists and words.
 
 | Screen | Reads | Sends | Notes |
 | --- | --- | --- | --- |
 | Queue | `queue`; `counts.importRulesWaiting` | `decision` with `approve` on a right swipe and `delete` on a left swipe | Filter chips: All, New (`draftKind` new), Rewrite (`rewrite`), Conflict (`contradiction`). The badge counts `drafts` plus `omitted`. A `desktopOnly` draft does not offer swipe actions and reads "Approve this one on your PC". While `importRulesWaiting` is above 0, the screen reads "An import of {k} rules waits on your PC." |
 | Rule detail with edit | One `draft` from `queue`; `evidence` while the PC is online | `evidence-request`; `decision` with `approve`, `saveEdit`, `reject` or `delete` | The line "Drafted on your PC" sits under the rule, and the screen does not show a model name or a Claude label. The Agents row names the coding agents of `agents`, "Claude Code" and "Codex", because the rule reaches their files. Each evidence row names its agent, or "Review comment {label}" for an item whose `agent` is `null`. While the PC is offline, the rationale and the words areas read "Appears while your PC is online". A `desktopOnly` draft shows "Approve this one on your PC" in place of the buttons |
-| Library | `library` | `decision` with `edit`, `turnOff`, `turnOn` or `delete` | A row shows `violationsSinceApproval` and `lastSeenAt`. A counter that is null reads "Not measured yet". The rule screen offers Edit, Turn Off or Turn On, and Delete. A `desktopOnly` rule offers none of them and reads "Change this one on your PC". Edit sends the changed text as `edit`. The phone does not ask for the words behind violations |
-| Learning dashboard | `counts` | No messages | The numbers and the two weekly charts. A number that is null reads "Not measured yet". "Drafts today: {n}" shows no limit. "Drafting runs today: {r} of {cap}" reads `draftingRunsToday` and `draftingRunCap` |
+| Library | `library` | `decision` with `edit`, `turnOff`, `turnOn` or `delete` | A row shows `violationsSinceApproval` and `lastSeenAt`. A counter that is null reads "Not measured yet". The rule screen offers Edit, Turn Off or Turn On, and Delete. A `desktopOnly` rule offers none of them and reads "Change this one on your PC". Edit sends the changed text as `edit`. "Violations since approval" opens the rule's list on the Learning screens |
+| Learning dashboard | `counts` | No messages | The numbers and the two weekly charts. A number that is null reads "Not measured yet". A week that is not measured reads "Not measured", and the chart leaves its bar out. "Drafts today: {n}" shows no limit. "Drafting runs today: {r} of {cap}" reads `draftingRunsToday` and `draftingRunCap`. Each number and each bar opens its list while the PC is online |
+| Learning list and row detail, revision 4 | `learning-page` while the PC is online; `counts` | `learning-request`, with the next page while `next` holds a value; `learning-words-request` from Show My Words | The list shows its number, its definition, its rule, the thresholds and what is left out. A row opens its group, rule, draft or run. The words show until the row's screen closes. The phone does not send a request to a PC of revision 3 or older. The screen then asks the person to update Lastide on the PC |
 | Pair and Settings | `pairings.json`, `welcome` and `presence` | Pairing; `unpair` | "Paired with My PC, last seen 2 min ago" reads `pcName` and `pcLastSeenAt`. The diagnostics block shows the build number, the pairing state, the relay origin, and the last close code, error or `dropped` reason. Notification settings arrive with phase 7 push, so version 1 shows none |
+
+### 7.6 Learning lists and words (revision 4)
+
+Each learning number is the length of a list on the PC. Revision 4 lets the phone open that list, one page at a time, and read one row's words. The PC builds every list again for each page, and it sends lists and words only as answers.
+
+Table 31. Each subject names one list, and the list explains one number of the Learning screens.
+
+| `subject.kind` | Also names | One row | Order | The number it explains |
+| --- | --- | --- | --- | --- |
+| `repeatWeek` | `weekStart` | A turn that counts as a repeat correction in that week | Newest first | The week's `repeatCorrections`, and `repeatCorrectionsThisWeek` or `repeatCorrectionsLastWeek` |
+| `violationWeek` | `weekStart` | A turn that repeats one or more approved rules, each in `violations` | Newest first | The week's `violations`, and `violationsThisWeek` |
+| `rulesApprovedWeek` | `weekStart` | A rule approved in that week and not deleted | Newest approval first | `rulesApprovedThisWeek` |
+| `draftsToday` | `day` | A draft that a drafting run wrote that day | Newest first | `draftsToday` |
+| `runsToday` | `day` | A drafting run that started that day | Newest first | `draftingRunsToday`, and `draftingRunsFinishedToday` by `state` |
+| `rulesOn` | No other field | A rule that is on | Newest approval first | `rulesApproved` |
+| `group` | `id` | A turn of the joined group. `head` holds the group | Oldest first | The group's `size` |
+| `rule` | `id` | A turn that violates the rule. `head` holds the rule | Newest first | The rule's `violationsSinceApproval` in `library` |
+| `draft` | `id` | A turn of the draft's evidence. `head` holds the draft | Newest first | The draft's `evidenceCount` |
+| `run` | `id` | A draft that the run wrote. `head` holds the run | Newest first | The run's `drafts` |
+
+A list. The phone asks for a list with `learning-request`, `from` 0 and `listHash` `null`. The PC answers from one store call: a fresh `counts` first, then `learning-page`. So the number on the screen and the list come from the same moment.
+
+- `rows` holds at most 50 rows. The PC also drops rows from the end until the plaintext fits in 64,000 bytes. `next` names the first row that the page left out, and is `null` on the last page.
+- For a later page, the phone sends `from` set to `next` and the `listHash` of the first page. A list whose hash changed answers `changed`, and the phone asks for the first page again. So a row never shows twice and never goes missing.
+- A `weekStart` outside the 12 weeks of `counts.weeks` answers `gone`. So do a `day` other than `counts.today` and an `id` that no list holds. The PC sends a fresh `counts` before such an answer.
+- The 61st page request in a minute answers `limited`. The PC answers `blocked` while it cannot read its lists of excluded projects.
+- The phone holds the pages in memory only. The phone drops them when the list's screen closes or the app leaves the active state. The same holds when the PC goes offline or the person picks another PC.
+
+A row's words. A turn row offers Show My Words. The phone makes a fresh reply key. The phone then sends `learning-words-request` with the row's `ref` and the key's public half.
+
+1. The PC finds the turn behind `ref` only among the turns that some list holds.
+2. The PC refuses a turn of an excluded project, or one whose folder no record names. The answer is `gone`.
+3. The PC reads the person's own line from the transcript on the PC, or a review comment's latest text. The PC checks the line's SHA-256, redacts the words, and cuts them to one line of 300 code points.
+4. The PC seals `learning-words` in Auth mode to `replyKey`, with the PC key as sender and `INFO_MESSAGE`. The envelope carries REPLY_KEY and slot 0. The PC forgets `replyKey` after it seals.
+5. The phone opens the answer with the reply key of that request. The phone shows the words until the row's screen closes, then deletes the words and the key.
+
+`state` reads `words` with the words, or `removed` when the transcript or its line changed or is gone. `state` reads `gone` when the row left the lists. The 61st request in an hour reads `limited` with `nextAt`. The phone holds the words in memory only, and hides them as soon as the app leaves the active state.
+
+A row never holds a path, a session id or the person's words. A project appears by its folder name alone. Learning pages and learning words never carry the MAILBOX flag, and no push carries them.
+
+Table 32. Every learning message stays far under the 262,052-byte plaintext limit, so a list never blocks the socket.
+
+| Limit | Value |
+| --- | --- |
+| Rows in one page | 50 |
+| Bytes of one `learning-page` plaintext | 64,000. The PC drops rows from the end of the page |
+| Largest row | Under 19,000 bytes, on a turn with 8 violations or a rule with 32 projects at the schema's limits. So a page always holds at least one row beside its `head` |
+| Pages a phone may ask for | 60 a minute. Over that, the PC answers `limited` |
+| Words a phone may ask for | 60 an hour, one row each. Over that, the PC answers `limited` with `nextAt` |
+| Words in one answer | 300 code points, so at most 1,200 bytes of UTF-8 |
+| Answer time | 10 s. The phone then says that the PC did not answer |
+
+The PC counts both limits per phone in memory, so a restart of Lastide starts both counts again. A refused request does not count.
+
+Table 33. Every pair of revisions works, and the newer side adapts.
+
+| Phone | PC | What happens |
+| --- | --- | --- |
+| 4 | 4 | Everything in this section |
+| 4 | 3 or older | The numbers as before. A tap shows the number's definition and asks the person to update Lastide on the PC. The phone does not send a learning request |
+| 3 or older | 4 | The phone gets `counts` at its own revision, without the fields of revision 4. The four learning types never travel |
+
 
 ## 8. Demo mode and the demo room
 
@@ -1611,12 +1985,13 @@ Table 24. The demo room keeps the protocol and relaxes only the rules that need 
 | Check code | The person reads the code on the phone and types it on the PC | The scripted PC accepts each pair request after it sends `pair-received`. Nobody types a code |
 | Phones | 8 at most | 8 at most. The scripted PC removes its oldest phone before it adds a ninth |
 | `twoPhones` | A second pair request ends the pairing | Each pairing socket is a separate pairing |
-| Data | The person's own drafts and rules | The demo fixtures of section 8.1 only |
+| Data | The person's own drafts and rules | The demo fixtures of section 8.1, and learning lists that the scripted PC builds from them |
 
 - The Worker marks a room as a demo room at creation, from `"demo": true` in the `POST` body. The Worker accepts that field only from an account that the Worker secret `RELAY_DEMO_ACCOUNTS` lists, as account ids separated by commas. The account ids therefore stay out of the code.
 - The scripted PC is the phone bridge's protocol code, run without a window by `scripts/relay-check/demo-pc.mjs` in the Lastide workspace repository. The script runs on an always-on host while a review is open.
 - The scripted PC opens one reusable ticket. App Review gets the QR code of that ticket in the review notes.
 - The scripted PC serves the demo fixtures, applies decisions to its own copy, and restores the copy every hour.
+- At revision 4, the scripted PC builds every learning list from the fixtures and from synthetic turns. So each number it sends equals the length of its list. The demo `counts` and the library's violation counters come from those lists. Every row's words are one fixed synthetic sentence.
 - The relaxed rules are safe here, because the demo room holds synthetic data only. A stranger who pairs with it sees only the fixtures and changes only the scripted PC's copy.
 - The demo room lives on the production relay origin, so the app's built-in list of section 3.2 admits it.
 
@@ -1814,15 +2189,16 @@ A room is exempt when its creating account sat in the D1 table `attest_exempt` w
 
 ### 10.1 Files
 
-The three files live in the iOS repository at `Packages/LastideKit/Tests/LastideKitTests/Vectors/`. The package's test target copies the folder as a resource.
+The four files live in the iOS repository at `Packages/LastideKit/Tests/LastideKitTests/Vectors/`. The package's test target copies the folder as a resource.
 
-Table 26. Three vector files cover the HPKE suite and Lastide's own byte rules.
+Table 26. Four vector files cover the HPKE suite and Lastide's own byte rules.
 
 | File | Content | Origin |
 | --- | --- | --- |
 | `rfc9180-a2.json` | RFC 9180 appendix A.2.1, Base Setup Information (mode_base, `0x00`), and A.2.3, Auth Setup Information (mode_auth, `0x02`), for DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20Poly1305 | Copied from the CFRG `test-vectors.json` |
 | `lastide-v1.json` | One pairing: the pair request with the phone's sealed key, `pair-received` with the exporter value and the check code, and `pair-accept`. Then one sealed `queue` message | Generated on the PC side |
 | `lastide-push-v1.json` | One `notice` and one `count-update`, each in a kind 4 envelope, and one App Attest client data hash (section 10.5) | Generated on the PC side |
+| `lastide-learning-v1.json` | The four learning types of revision 4, with `learning-words` sealed to a reply key. Also one turn reference and one list hash (section 10.6) | Generated on the PC side |
 
 ### 10.2 The RFC 9180 vector
 
@@ -1955,6 +2331,8 @@ Table 29. The vectors run in three places, and each place checks the parts its l
 | Push: open `notice` and `count-update` with the phone key, the PC public key and `INFO_PUSH`, through the phone's opener | Yes | Yes | Yes | No |
 | Push: flip one header bit of the notice, and the open must refuse | Yes | No | Yes | No |
 | Push: rebuild `clientData` and `clientDataHash` of the attest entry | Yes | No | Yes | Yes |
+| Learning: open the requests with the PC key, and the answers with the phone key or the reply key. Validate each against section 7.3 | From revision 4 | From revision 4 | Yes | No |
+| Learning: rebuild `learningRef.ref` from `turnId`, and `listHash.hash` from `listHash.rows` | From revision 4 | No | Yes | No |
 
 CryptoKit and swift-crypto do not expose the key schedule values, so the Swift tests compare opened plaintexts and exported values. The phone side checks sender behavior by round trip. A Swift test seals with `HPKE.Sender`, and the Node check opens the result in the live pairing test.
 
@@ -1993,6 +2371,40 @@ The two plaintexts:
 ```json
 {"type":"count-update","id":"tQ5lXKe8HPNmSkEKT4fRPg","sentAt":1794992580000,"storeVersion":44,"queueCount":0}
 ```
+
+
+### 10.6 The learning vector
+
+`scripts/relay-check/make-vector.mjs` writes `lastide-learning-v1.json` beside `lastide-v1.json`, from the same seeds and keys. The phone asks for this week's repeat corrections and gets one page of one row. Then it asks for that row's words, and the PC seals them to the phone's reply key. The local check regenerates the file byte for byte, opens all four envelopes and validates each plaintext.
+
+Table 34. The learning vector reuses the pairing of `lastide-v1.json`, and each new input comes from a named seed.
+
+| Value | Rule |
+| --- | --- |
+| PC key, phone key, pairing id, phone id | As in Table 27 |
+| Reply key | `DeriveKeyPair(seed("reply key"))` |
+| Ephemeral keys | `DeriveKeyPair(seed("ephemeral learning-request"))`, and likewise for `learning-page`, `learning-words-request` and `learning-words` |
+| Message ids | The first 16 bytes of `seed("message 7")` to `seed("message 10")`, in that order |
+| Times and seq | 240 s, 241 s, 250 s and 251 s after the pair request. Each message's `sentAt` equals its envelope's `seq` |
+| Turn reference | `learningRef.ref` of the synthetic turn id `learningRef.turnId`, by the rule of section 7.3 |
+| List hash | `listHash.hash` of the JSON text `listHash.rows`, which equals the page's `rows` |
+
+Format. One JSON object, with byte strings in lowercase hex:
+
+```text
+protocol, schema, suite, generator           schema is 4
+seeds: { pcKey, phoneKey, replyKey }
+keys: { pcPrivateKey, pcPublicKey, phonePrivateKey, phonePublicKey, replyPrivateKey, replyPublicKey }
+ids: { pairingId, phoneId }
+learningRef: { turnId, ref }
+listHash: { rows, hash }
+learningRequest:      { kind: 3, mode: 2, flags: 0, slot: 0, <envelope fields> }   phone to PC
+learningPage:         { kind: 3, mode: 2, flags: 0, slot: 0, <envelope fields> }   PC to phone
+learningWordsRequest: { kind: 3, mode: 2, flags: 0, slot: 0, <envelope fields> }   phone to PC
+learningWords:        { kind: 3, mode: 2, flags: 2, slot: 0, <envelope fields> }   PC to the reply key
+```
+
+`<envelope fields>` are those of section 10.3. The two requests open with the PC private key and the phone public key. `learningPage` opens with the phone private key and the PC public key. `learningWords` opens only with the reply private key and the PC public key.
 
 ## Sources
 

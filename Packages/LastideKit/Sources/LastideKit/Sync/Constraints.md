@@ -1,6 +1,6 @@
 # Sync message constraints
 
-`LastideKit` decodes each sync message into the Codable types in this folder. Codable checks the JSON types, the required fields and the enum values. The `validate` functions check every other constraint of the JSON Schema in `docs/protocol.md`, section 7.3. This list names each constraint and the code that checks it.
+`LastideKit` decodes each sync message into the Codable types in this folder. Codable checks the JSON types, the required fields and the enum values. The `validate` functions check every other constraint of the JSON Schema of revision 3 in `docs/protocol.md`, section 7.3. The section "Revision 4" lists what revision 4 adds. This list names each constraint and the code that checks it.
 
 Terms:
 
@@ -77,6 +77,58 @@ Terms:
 | `notice` | `storeVersion`, `queueCount`; `draft` is null or a short draft | `Notice.validate` |
 | `notice.draft` | Item id, store version, draft kind, 1 to 600 code points of text, scope | `NoticeDraft.validate` |
 | `count-update`, revision 3 | `storeVersion` and `queueCount` are counts. A revision 2 device does not know the type | `CountUpdate.validate`, `SyncMessage.decode(_:revision:)` |
+
+## Revision 4
+
+`LastideKit` decodes at schema revision 3 (`LastideProtocol.schemaRevision`). So `SyncMessage.decode` answers `unknownType` for the four learning types. `Counts` decoding skips the fields that revision 4 adds to `counts`. The list below names every constraint of revision 4 that the decoder must check once it reads that revision.
+
+| Schema definition | Constraint |
+| --- | --- |
+| `learningRef` | `t-` and canonical base64url of 16 bytes: `^t-[A-Za-z0-9_-]{21}[AQgw]$` |
+| `learningDate` | `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` |
+| `learningSpan` | `measured`, `partial` or `notMeasured` |
+| `itemIdOrNull`, `timeOrNull`, `categoryOrNull`, `probabilityOrNull` | Nullable fields: an item id, a time, a `group` value or a probability |
+| `shortNameOrNull` | Nullable; a string of 1 to 64 code points |
+| `probability` | A JSON number from 0 to 1 |
+| `learningText` | 1 to 500 code points, with no carriage return or line feed |
+| `groupState` | One of the ten listed values |
+| `learningSubject` | `repeatWeek`, `violationWeek` or `rulesApprovedWeek` with a `weekStart` date |
+| `learningSubject` | `draftsToday` or `runsToday` with a `day` date, or `rulesOn` alone |
+| `learningSubject` | `group`, `rule`, `draft` or `run` with an item id |
+| `learningGroupRef` | `size` is a count; `state`; nullable `oneRulePrevents`; `joinedBy` is `lead`, `words`, `model` or null |
+| `learningGroupRef` | Nullable `firstRef`, `firstAt`, `draftId` and `ruleId` |
+| `learningViolation` | `ruleId` is an item id; `ruleText` is a `learningText`; `textCut` is a boolean |
+| `learningViolation` | `ruleState` is `on`, `off` or `deleted`; `ruleApprovedAt` and `answeredAt` are times |
+| `learningViolation` | `covered` and `repeats` are nullable probabilities; `contradicts` is a probability |
+| `learningTurn` | `rowType` is `turn`; `ref`, `at`, `projectName` and `counted` are present |
+| `learningTurn` | `agent` is `claudeCode`, `codex` or null; `commentLabel`, when present, is null or matches `^C[0-9]{1,9}$` |
+| `learningTurn` | Nullable `signal`, `category`, `kindScore`, `scopeScore`, `questionVersion`, `countedAt` and `group` |
+| `learningTurn` | At most 8 `violations` |
+| `learningTurn`, `agent` null | A review comment: `commentLabel` is present, and `signal` is `reviewComment` or null |
+| `learningRule` | `rowType` is `rule`; `text` is a `learningText`; `state` is `on`, `off` or `deleted` |
+| `learningRule` | `source`, `category`, `scope`, `approvedAt` and `correctionsBeforeApproval`; nullable `violations`, `draftId` and `runId` |
+| `learningDraft` | `rowType` is `draft`; `status` is `waiting`, `approved`, `rejected` or `deleted` |
+| `learningDraft` | `text` is a `learningText` or null; `draftKind`, `createdAt`, `category` and `evidenceCount`; nullable `groupId` and `runId` |
+| `learningTokens` | `input`, `output` and `cacheRead` are counts; `cacheWrite5m` and `cacheWrite1h` are nullable counts |
+| `learningRun` | `rowType` is `run`; `route` is `claudeCode`, `terminal` or `apiKey`; `job` is `draft` or `importMerge` |
+| `learningRun` | `state` is `running`, `finished`, `failed` or `lost`; `outcome` is one of the eleven listed values or null |
+| `learningRun` | Nullable `endedAt`, `version`, `requestedModel`, `reportedModel`, `tokens`, `costMicros` and `recordedDrafts` |
+| `learningRun` | `costMissing` is one of four listed values or null; the other numbers are counts |
+| `learningGroup` | `rowType` is `group`; `size`; `state`; nullable `category`, `oneRulePrevents`, `formedAt`, `draftId` and `ruleId` |
+| `learningThresholds` | `kind`, `coverage`, `groupReady` and `groupWait` are probabilities |
+| `learning-request` | `subject`; `from` is a count; `listHash` is b64u16 or null |
+| `learning-page` | `requestId` is b64u16; `state` is `ok`, `changed`, `gone`, `limited` or `blocked` |
+| `learning-page` | `subject`, `storeVersion`, `asOf`, `value`, `total`, the three `leftOut` counts, `from` and `thresholds`; nullable `next` |
+| `learning-page` | `head` is null, a group, a rule, a draft or a run |
+| `learning-page` | At most 50 `rows`, each a turn, a rule, a draft or a run |
+| `learning-page`, state `ok` | `listHash` is a b64u16 |
+| `learning-page`, any other state | `rows` is empty, and `head`, `next` and `listHash` are null |
+| `learning-words-request` | `ref`; `replyKey` is b64u32 |
+| `learning-words` | `requestId` is b64u16; `ref`; `state` is `words`, `removed`, `gone` or `limited`; `words` holds at most 300 code points |
+| `learning-words`, by state | `words`: a non-empty string and a null `nextAt`. `removed` and `gone`: null `words` and `nextAt`. `limited`: null `words` and an integer `nextAt` |
+| `counts`, revision 4 | `rulesApprovedThisWeek` and `draftingRunsFinishedToday` are counts; `measuredFrom` is a nullable time; `today` is a `learningDate` |
+| `counts`, revision 4 | `repeatCorrectionsLastWeekByNow` and `violationsLastWeekByNow` are nullable counts. Each new field is optional |
+| `counts.weeks[]`, revision 4 | `repeatState` and `violationState` are `learningSpan` values; `waiting` is a nullable count; `untraced` is a count. Each is optional |
 
 ## Rules outside the schema
 
