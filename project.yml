@@ -34,6 +34,9 @@ targets:
     platform: iOS
     sources:
       - App
+      # The changelog the What's New screen shows (Settings). The repository root holds the one copy.
+      - path: CHANGELOG.md
+        buildPhase: resources
     configFiles:
       Debug: Config/Debug.xcconfig
     dependencies:

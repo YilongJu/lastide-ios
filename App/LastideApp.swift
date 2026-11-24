@@ -30,6 +30,10 @@ enum ScreenshotScreen: String, CaseIterable, Sendable {
     case learningWords, learningWordsLimited, learningWordsRemoved, learningWordsGone, learningWordsNoAnswer
     /// A Library rule's "Violations since approval", which opens the rule's list.
     case libraryViolations
+    /// The Review tab with the sheet that shows once after an update, for the build the bundled changelog describes next.
+    case whatsNewSheet
+    /// The Settings tab, whose What's New screen reads a made-up changelog that does not parse.
+    case whatsNewMalformed
 
     /// True for the two widget screens, which draw the widget's view instead of the tabs.
     var isWidget: Bool { self == .widgetSmall || self == .widgetRectangular }
@@ -66,7 +70,7 @@ struct LastideApp: App {
                 if let screenshot = runtime.screenshot, screenshot.screen.isWidget {
                     WidgetScreenshotView(style: screenshot.screen == .widgetSmall ? .small : .rectangular)
                 } else {
-                    RootView(model: runtime.model, screenshot: runtime.screenshot?.screen)
+                    RootView(model: runtime.model, whatsNew: runtime.whatsNew, screenshot: runtime.screenshot?.screen)
                 }
             }
             .preferredColorScheme(runtime.screenshot.map { $0.dark ? .dark : .light })
@@ -122,7 +126,7 @@ extension ScreenshotStaging {
             try LearningStaging.stage(screen, model: model)
         case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings, .widgetSmall, .widgetRectangular,
              .learningList, .learningTurn, .learningGroup, .learningRule, .learningDraft, .learningRun, .learningRuns,
-             .learningWeeks, .libraryViolations:
+             .learningWeeks, .libraryViolations, .whatsNewSheet, .whatsNewMalformed:
             break
         }
         return model

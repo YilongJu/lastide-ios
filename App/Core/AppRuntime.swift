@@ -51,6 +51,8 @@ final class AppRuntime {
 
     let screenshot: ScreenshotLaunch?
     let model: AppModel
+    /// The bundled changelog and the sheet shown once after an update.
+    let whatsNew: WhatsNew
     private let environment: LaunchEnvironment?
     /// The stores once the moves ended. The model loads them when the phone is unlocked.
     private(set) var stores: LiveStores?
@@ -61,6 +63,14 @@ final class AppRuntime {
         self.model = model
         self.screenshot = screenshot
         self.environment = environment
+        let build = model.facts.app.build
+        if let screenshot {
+            whatsNew = .screenshot(screenshot.screen)
+        } else if Self.isHostedTest {
+            whatsNew = .quiet(installedBuild: build)
+        } else {
+            whatsNew = .live(installedBuild: build)
+        }
     }
 
     private static func makeShared() -> AppRuntime {

@@ -202,6 +202,43 @@ final class ScreenshotTests: XCTestCase {
     func testPairingCheckCode() throws { try capture("pairingCode", waitFor: identifier("checkCode")) }
     func testPairingFailed() throws { try capture("pairingFailed", waitFor: identifier("pairingFailed")) }
 
+    // MARK: What's New
+
+    /// Settings, What's New: the bundled changelog by build, with the build the run plays marked "On this iPhone".
+    func testWhatsNew() throws {
+        try capture("whatsNew", screen: "settings", waitFor: identifier("screen.settings")) { app in
+            try self.openWhatsNew(app)
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "installedEntry", "On this iPhone"))
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "entryHeader", "Build "))
+        }
+    }
+    func testWhatsNewLarge() throws {
+        try capture("whatsNew-large", screen: "settings", waitFor: identifier("screen.settings"), large: true) { app in
+            try self.openWhatsNew(app)
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "installedEntry", "On this iPhone"))
+        }
+    }
+    /// A changelog that does not parse shows as written, with the line that broke it.
+    func testWhatsNewMalformed() throws {
+        try capture("whatsNewMalformed", waitFor: identifier("screen.settings")) { app in
+            try self.openWhatsNew(app)
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "changelogRaw", "## Build two"))
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "changelogError", "Line 7: "))
+        }
+    }
+    /// The sheet shown once after an update, over the Review tab.
+    func testWhatsNewSheet() throws {
+        try capture("whatsNewSheet", waitFor: identifier("whatsNewSheet")) { app in
+            try self.expect(app, NSPredicate(format: "label BEGINSWITH %@", "What's new in build "))
+            try self.expect(app, self.identifier("change"))
+        }
+    }
+    func testWhatsNewSheetLarge() throws {
+        try capture("whatsNewSheet-large", screen: "whatsNewSheet", waitFor: identifier("whatsNewSheet"), large: true) { app in
+            try self.expect(app, NSPredicate(format: "label BEGINSWITH %@", "What's new in build "))
+        }
+    }
+
     // MARK: Phase 7: notifications and the widget
 
     func testSettingsNotificationsOn() throws {
@@ -259,6 +296,15 @@ final class ScreenshotTests: XCTestCase {
     // MARK: Helpers
 
     private func identifier(_ id: String) -> NSPredicate { NSPredicate(format: "identifier == %@", id) }
+
+    /// Scrolls Settings to the What's New row, opens it and waits for its screen.
+    private func openWhatsNew(_ app: XCUIApplication) throws {
+        let row = app.descendants(matching: .any).matching(identifier("whatsNewRow")).firstMatch
+        for _ in 0..<6 where !(row.exists && row.isHittable) { app.swipeUp() }
+        XCTAssertTrue(row.exists && row.isHittable, "Settings shows no What's New row")
+        row.tap()
+        try expect(app, identifier("screen.whatsNew"))
+    }
 
     /// The Approve button of the draft's action bar. The bar sits inside the screen's identifier, so it is found by label.
     private var approveButton: NSPredicate {

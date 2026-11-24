@@ -7,6 +7,7 @@ import UIKit
 /// the check code, and a link to the diagnostics block with its one Copy button.
 struct SettingsView: View {
     @Bindable var model: AppModel
+    let whatsNew: WhatsNew
     @State private var pendingRevoke: PairingRecord?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -20,6 +21,12 @@ struct SettingsView: View {
                 }
                 NotificationsSection(model: model)
                 Section {
+                    NavigationLink {
+                        WhatsNewView(whatsNew: whatsNew)
+                    } label: {
+                        Label("What's New", systemImage: "sparkles")
+                    }
+                    .accessibilityIdentifier("whatsNewRow")
                     NavigationLink {
                         DiagnosticsView(model: model)
                     } label: {

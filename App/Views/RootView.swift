@@ -9,19 +9,21 @@ enum AppTab: Hashable {
 /// The four tabs: Review (the queue and the rule detail), Library, Learning and Settings (protocol Table 23).
 struct RootView: View {
     @Bindable var model: AppModel
+    @Bindable var whatsNew: WhatsNew
     @State private var tab: AppTab
     @State private var queuePath: [String]
     @State private var libraryPath: [AppRoute]
     @State private var learningPath: [AppRoute]
 
-    init(model: AppModel, screenshot: ScreenshotScreen?) {
+    init(model: AppModel, whatsNew: WhatsNew, screenshot: ScreenshotScreen?) {
         _model = Bindable(wrappedValue: model)
+        _whatsNew = Bindable(wrappedValue: whatsNew)
         var tab = AppTab.review
         var queuePath: [String] = []
         var libraryPath: [AppRoute] = []
         var learningPath: [AppRoute] = []
         switch screenshot {
-        case .none, .queue, .queueWaiting, .queueEmpty: break
+        case .none, .queue, .queueWaiting, .queueEmpty, .whatsNewSheet: break
         case .draftDetail:
             guard let draft = model.store.drafts.first(where: { !$0.desktopOnly }) else {
                 preconditionFailure("the demo queue holds no draft that the phone may act on")
@@ -40,7 +42,7 @@ struct RootView: View {
             tab = staged.tab
             if staged.tab == .library { libraryPath = staged.path } else { learningPath = staged.path }
         case .settings, .settingsPaired, .pairingDisclosure, .pairingScan, .pairingWaiting, .pairingCode, .pairingFailed,
-             .settingsNotificationsOn, .settingsNotificationsOff:
+             .settingsNotificationsOn, .settingsNotificationsOff, .whatsNewMalformed:
             tab = .settings
         case .widgetSmall, .widgetRectangular:
             preconditionFailure("the widget screens draw WidgetScreenshotView, not the tabs")
@@ -76,8 +78,14 @@ struct RootView: View {
                 LearningView(model: model, path: $learningPath, onPair: { tab = .settings })
             }
             Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
-                SettingsView(model: model)
+                SettingsView(model: model, whatsNew: whatsNew)
             }
+        }
+        // The notification question goes first, so the two never stack.
+        .sheet(item: Binding(get: { model.askNotifications ? nil : whatsNew.sheet },
+                             set: { whatsNew.sheet = $0 })) { entry in
+            WhatsNewSheet(entry: entry) { whatsNew.sheet = nil }
+                .onAppear { whatsNew.markSeen() }
         }
         .alert("Lastide", isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })) {
             Button("OK", role: .cancel) {}
