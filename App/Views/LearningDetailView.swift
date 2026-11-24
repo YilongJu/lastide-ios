@@ -55,8 +55,7 @@ struct LearningTurnView: View {
             }
             wordsSection
             Section("Scores") {
-                Field("Correction score", turn.kindScore.map { LearningText.kindScore($0, threshold: thresholds?.kind ?? 0.4) }
-                      ?? LearningText.scoreNotKept, identifier: "kindScore")
+                Field("Correction score", LearningText.kindScoreLine(turn, threshold: thresholds?.kind ?? 0.4), identifier: "kindScore")
                 Field("Every-project score", turn.scopeScore.map(LearningText.scopeScore) ?? LearningText.scoreNotKept)
                 Field("Question version", turn.questionVersion.map(String.init) ?? LearningText.notKept)
             }
@@ -84,13 +83,16 @@ struct LearningTurnView: View {
                     Field("State", LearningText.ruleState(violation.ruleState))
                     Field("Coverage score", violation.covered.map { LearningText.coveredScore($0, threshold: thresholds?.coverage ?? 0.7) }
                           ?? LearningText.scoreNotKept)
-                    Field("Repeats score", violation.repeats.map(LearningText.score) ?? LearningText.scoreNotKept)
+                    Field("Repeats score", violation.repeats.map(LearningText.repeatsAnswer) ?? LearningText.scoreNotKept)
                     Field("Contradicts score", LearningText.score(violation.contradicts))
                     Field("Answered", LearningDates.time(violation.answeredAt))
                     RouteLink(title: "Show the Rule", route: .list(.rule(id: violation.ruleId), expected: nil))
                 } header: {
-                    if index == 0 { Text(LearningText.violationCount(turn.violations.count)) }
+                    if index == 0 { Text(LearningText.violationCount(turn.violations.count + (turn.violationsLeftOut ?? 0))) }
                 }
+            }
+            if let leftOut = turn.violationsLeftOut, leftOut > 0 {
+                Section { Text(LearningText.violationsLeftOut(leftOut)).foregroundStyle(.secondary) }
             }
         }
         .navigationTitle("Message")

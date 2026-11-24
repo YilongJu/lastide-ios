@@ -129,7 +129,7 @@ public enum LearningText {
         case .repeats:
             return "A message counts when a group ties it to something you told an agent before. A message also counts when it repeats a rule you approved earlier. Each message counts once, in the week you typed it."
         case .violations:
-            return "You approved a rule, and later told an agent the same thing. The model answered that the message repeats the rule, at \(score(thresholds?.coverage ?? defaultCoverage)) or more. Rules you turned off or deleted since still count."
+            return "You approved a rule, and later told an agent the same thing. The model scored that the rule covers the message at \(score(thresholds?.coverage ?? defaultCoverage)) or more. Its first answer was that the message repeats the rule, ahead of \"contradicts\" and \"unrelated\". Rules you turned off or deleted since still count."
         case .rulesApproved:
             return "Rules you approved since Monday that you have not deleted. An imported principle counts as one rule."
         case .drafts:
@@ -224,7 +224,7 @@ public enum LearningText {
         case .runsToday: return definition(.runs, thresholds: thresholds, cap: cap)
         case .rulesOn: return definition(.rulesOn, thresholds: thresholds, cap: cap)
         case .group: return "Corrections that one rule may answer. The earliest one is what you said first, so it does not count as a repeat."
-        case .rule: return "Messages you typed after you approved this rule that repeat it, as the model answered at \(coverage) or more."
+        case .rule: return "Messages you typed after you approved this rule. The rule covers each one at \(coverage) or more, and the model's first answer is that the message repeats it."
         case .draft: return "The corrections that the drafting run read for this draft."
         case .run: return "The drafts this run wrote, whatever you decided about them."
         }
@@ -235,22 +235,80 @@ public enum LearningText {
         let coverage = score(thresholds?.coverage ?? defaultCoverage)
         switch subject.kind {
         case .repeatWeek:
-            return "Rule: a correction counts from the second mention of its group on. A group the model scored under \(score(thresholds?.groupWait ?? 0.3)) does not count. Every violation counts."
+            return "How it counts: a correction counts from the second mention of its group on. A group the model scored under \(score(thresholds?.groupWait ?? 0.3)) does not count. Every violation counts."
         case .violationWeek, .rule:
-            return "Rule: the coverage answer reads \u{201C}repeats\u{201D} at \(coverage) or more, for a message typed after the rule's approval."
-        case .rulesApprovedWeek: return "Rule: the approval time lies in this week, and the rule is not deleted."
-        case .draftsToday: return "Rule: a drafting run wrote the draft since midnight. Import drafts do not count."
-        case .runsToday: return "Rule: the run started since midnight, whatever became of it."
-        case .rulesOn: return "Rule: the rule is switched on and not deleted."
-        case .group: return "Rule: two corrections of one category share their words, or the model answered that one rule answers both."
-        case .draft: return "Rule: a draft keeps up to 20 corrections with their details."
-        case .run: return "Rule: each draft line of the run counts once."
+            return "How it counts: a rule covers the message at \(coverage) or more, and the first of the three answers is \"repeats\". You typed the message after the rule's approval."
+        case .rulesApprovedWeek: return "How it counts: the approval time lies in this week, and the rule is not deleted."
+        case .draftsToday: return "How it counts: a drafting run wrote the draft since midnight. Import drafts do not count."
+        case .runsToday: return "How it counts: the run started since midnight, whatever became of it."
+        case .rulesOn: return "How it counts: the rule is switched on and not deleted."
+        case .group: return "How it counts: two corrections of one category share their words, or the model answered that one rule answers both."
+        case .draft: return "How it counts: a draft keeps up to 20 corrections with their details."
+        case .run: return "How it counts: each draft line of the run counts once."
         }
     }
 
     /// The thresholds a list's scores meet.
     public static func thresholds(_ thresholds: LearningThresholds) -> String {
         "Thresholds: a message may become a correction from \(score(thresholds.kind)). A rule covers a message from \(score(thresholds.coverage)). A group is ready from \(score(thresholds.groupReady)), and splits under \(score(thresholds.groupWait))."
+    }
+
+    /// The thresholds that judged a list's rows, or nil for a list whose rows no score decides: the drafts, the runs and
+    /// the rules approved or on. The desktop's `thresholdsLine` gives the same text.
+    public static func thresholds(_ subject: LearningSubject, _ thresholds: LearningThresholds) -> String? {
+        switch subject {
+        case .repeatWeek: return Self.thresholds(thresholds)
+        case .group:
+            return "Thresholds: a message may become a correction from \(score(thresholds.kind)). A group is ready from \(score(thresholds.groupReady)), and splits under \(score(thresholds.groupWait))."
+        case .draft: return "Threshold: a message may become a correction from \(score(thresholds.kind))."
+        case .violationWeek, .rule: return "Threshold: a rule covers a message from \(score(thresholds.coverage))."
+        case .rulesApprovedWeek, .draftsToday, .runsToday, .rulesOn, .run: return nil
+        }
+    }
+
+    /// The line under a chart whose current week shows as an outline.
+    public static let currentWeekLegend = "The outlined bar is this week so far."
+
+    /// The folded group of a list's definition, counting rule and thresholds, below its rows.
+    public static let howCounted = "How this is counted"
+
+    /// The line beside Show More when the PC refused a later page: the rows read so far stay.
+    public static let laterPageLimited = "Enough lists for now. Try Show More again in a minute."
+
+    /// The most characters of a rule's text in a row's reason line.
+    static let reasonRuleLength = 80
+
+    /// Why a turn row counts, in one line under the row: the rule it repeats, or the group's first mention. Nil for a turn
+    /// that neither repeats a rule nor joins a group, such as a draft's correction. The desktop's `turnReason` gives the
+    /// same words.
+    public static func turnReason(_ turn: LearningTurn, dateText: (Int) -> String) -> String? {
+        if let first = turn.violations.first {
+            let more = turn.violations.count - 1 + (turn.violationsLeftOut ?? 0)
+            let rule = first.ruleText.count <= reasonRuleLength ? first.ruleText : String(first.ruleText.prefix(reasonRuleLength - 1)) + "\u{2026}"
+            switch more {
+            case 0: return "Repeats: \(rule)"
+            case 1: return "Repeats: \(rule), and 1 more rule"
+            default: return "Repeats: \(rule), and \(more) more rules"
+            }
+        }
+        guard let group = turn.group else { return nil }
+        if !turn.counted { return countsNo }
+        return group.firstAt.map { "Said again: first said \(dateText($0))" } ?? "Said again: its first mention is older and has no details"
+    }
+
+    /// The correction score of a turn, against the threshold that applies to it. A violation that is not a correction counts
+    /// through the rule it repeats, so the correction threshold does not apply.
+    public static func kindScoreLine(_ turn: LearningTurn, threshold: Double) -> String {
+        guard let value = turn.kindScore else { return scoreNotKept }
+        if !turn.violations.isEmpty, turn.group == nil {
+            return "The model's score: \(score(value)). Not used: a violation counts through the rule it repeats."
+        }
+        return kindScore(value, threshold: threshold)
+    }
+
+    /// "0.88, the highest of the three answers: repeats, contradicts, unrelated."
+    public static func repeatsAnswer(_ value: Double) -> String {
+        "\(score(value)), the highest of the three answers: repeats, contradicts, unrelated."
     }
 
     /// "The number: 6".
@@ -351,6 +409,12 @@ public enum LearningText {
     /// "Repeats an approved rule" or "Repeats 2 approved rules".
     public static func violationCount(_ rules: Int) -> String {
         rules == 1 ? "Repeats an approved rule" : "Repeats \(rules) approved rules"
+    }
+
+    /// "1 more violation is not on this phone. Your PC shows it." when the PC left violations out of a row.
+    public static func violationsLeftOut(_ count: Int) -> String {
+        count == 1 ? "1 more violation is not on this phone. Your PC shows it."
+            : "\(count) more violations are not on this phone. Your PC shows them."
     }
 
     /// "3 members, approved".

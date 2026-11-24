@@ -56,6 +56,8 @@ public struct LearningList: Hashable, Sendable {
     public private(set) var thresholds: LearningThresholds?
     /// True after the list changed on the PC and the phone asked again.
     public private(set) var restarted = false
+    /// True after the PC refused a later page for its page limit. The rows read so far stay, and Show More asks again.
+    public private(set) var laterPageLimited = false
     private var restarts = 0
 
     /// A list in a phase without a request, such as `offline` or `needsUpdate`.
@@ -107,8 +109,14 @@ public struct LearningList: Hashable, Sendable {
         guard let pending = pendingRequestID, page.requestId == pending, page.subject == subject else { return .ignored }
         pendingRequestID = nil
         pendingSince = nil
+        if page.state == .limited, page.from > 0, phase == .shown {
+            // A refused later page keeps the rows already read: the limit passes in a minute.
+            laterPageLimited = true
+            return .shown
+        }
         switch page.state {
         case .ok:
+            laterPageLimited = false
             if page.from == 0 {
                 value = page.value
                 total = page.total
@@ -157,7 +165,32 @@ public struct LearningList: Hashable, Sendable {
         self = LearningList(subject: subject, phase: phase)
     }
 
-    /// The sum check of the phone (design Table 10): the first page's `value` must equal the number on the screen, and
+    /// The sum check against `counts` (design Table 10). The first page's `value` must equal the number of `counts`,
+    /// but only when `counts` comes from the same store version as the page: a newer `counts`, such as the one before
+    /// another list's first page, may count a new row that this list does not hold yet. The rows read plus
+    /// `leftOut.older` must equal `value` once the last page arrived. Returns the two numbers of "Your PC counted {a} and
+    /// listed {b}." on a difference, or nil.
+    public func mismatch(counts: Counts?) -> (counted: Int, listed: Int)? {
+        mismatch(expected: counts.flatMap { $0.storeVersion == storeVersion ? $0.number(for: subject) : nil })
+    }
+
+    /// True when `counts` from a newer store version gives this list's number another value. The list then reads again.
+    public func isStale(against counts: Counts?) -> Bool {
+        guard phase == .shown, let counts, let storeVersion, counts.storeVersion > storeVersion,
+              let number = counts.number(for: subject) else { return false }
+        return number != value
+    }
+
+    /// The first-page request after a newer `counts` changed the list's number. The screen shows "The list changed on
+    /// your PC, so it reads again."
+    public mutating func readAgain(now: Int) -> LearningRequest {
+        self = LearningList(subject: subject, phase: .asking)
+        restarted = true
+        return firstRequest(now: now)
+    }
+
+    /// The sum check of the phone (design Table 10) against a number of the same store version as the page: the first
+    /// page's `value` must equal that number, and
     /// the loaded rows plus `leftOut.older` must equal `value` once the last page arrived. Returns the two numbers of
     /// "Your PC counted {a} and listed {b}." on a difference, or nil.
     public func mismatch(expected: Int?) -> (counted: Int, listed: Int)? {

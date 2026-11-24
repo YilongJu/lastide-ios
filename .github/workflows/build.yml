@@ -78,6 +78,7 @@ jobs:
           screens="$screens learningRun learningRunEnd learningRuns learningWeeks learningPaired learningOffline learningMismatch"
           screens="$screens learningOlderPC learningOlderPCList learningWordsLimited learningWordsRemoved learningWordsGone"
           screens="$screens learningWordsNoAnswer libraryViolations learningList-large learningTurn-large learningRun-large"
+          screens="$screens learningWords learningWords-large"
           for screen in $screens; do
             for scheme in light dark; do
               if [ ! -s "build/screenshots/$screen-$scheme.png" ]; then

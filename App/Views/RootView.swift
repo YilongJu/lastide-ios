@@ -35,7 +35,7 @@ struct RootView: View {
         case .learning, .learningNotMeasured: tab = .learning
         case .learningList, .learningTurn, .learningGroup, .learningRule, .learningDraft, .learningRun, .learningRuns,
              .learningWeeks, .learningPaired, .learningOffline, .learningOlderPC, .learningOlderPCList, .learningMismatch,
-             .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer, .libraryViolations:
+             .learningWords, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer, .libraryViolations:
             let staged = LearningStaging.path(for: screenshot!)
             tab = staged.tab
             if staged.tab == .library { libraryPath = staged.path } else { learningPath = staged.path }

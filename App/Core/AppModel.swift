@@ -788,7 +788,9 @@ final class AppModel {
         }
         if let staged = stagedLearning {
             let phase = staged.online ? (staged.words ?? .gone) : .offline
-            precondition({ if case .words = phase { return false }; return true }(), "a screenshot never shows words")
+            // A screenshot shows no words but the demo room's one fixed synthetic sentence.
+            precondition({ if case .words(let text) = phase { return text == LearningStaging.stagedWords }; return true }(),
+                         "a screenshot shows no words but the fixed synthetic sentence")
             learningWords = OpenWords(ref: ref, requestID: nil, phase: phase, sentAt: nil)
             return
         }
@@ -898,6 +900,18 @@ final class AppModel {
         _ = list.apply(page, now: demoLearning.asOf)
         if let thresholds = list.thresholds { learningThresholds = thresholds }
         learningLists[subject] = list
+    }
+
+    /// A newer `counts` that gives a shown list's number another value: that list reads again from its first page, and its
+    /// screen says the list changed. So the sum check never compares a list with the numbers of another store version.
+    private func readStaleListsAgain() {
+        guard pcSchema >= 4, stagedLearning == nil, !store.isDemo, canAskPC else { return }
+        for (subject, open) in learningLists where open.isStale(against: store.counts) {
+            var list = open
+            let request = list.readAgain(now: now())
+            learningLists[subject] = list
+            sendLearning(request)
+        }
     }
 
     /// Drops every list and the words, as when the PC goes offline or another PC is picked.
@@ -1056,6 +1070,7 @@ final class AppModel {
         case .counts(let counts):
             session?.notePCSchema(counts.schema)
             store.apply(message)
+            readStaleListsAgain()
         case .acknowledgement:
             if case .refused(let target, let reason) = store.apply(message) {
                 notice = reason.displayText(for: target.targetType)

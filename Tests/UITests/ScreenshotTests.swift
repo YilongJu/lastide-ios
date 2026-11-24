@@ -71,16 +71,24 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: Learning drill-down (learning evidence design, check U1)
 
+    /// The number, then the rows, each with the line that says why it counts.
     func testLearningList() throws {
         try capture("learningList", waitFor: identifier("screen.learningList")) { app in
             try self.expect(app, NSPredicate(format: "label BEGINSWITH %@", "The number: "))
-            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Thresholds: a message may become a correction from 0.40"))
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "rowReason", "Repeats: "))
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "rowReason", "Said again: first said "))
         }
     }
+    /// The end of the list: the row count, and the folded group with the definition, the rule and the thresholds.
     func testLearningListEnd() throws {
         try capture("learningListEnd", screen: "learningList", waitFor: identifier("screen.learningList")) { app in
+            let fold = app.descendants(matching: .any).matching(self.identifier("howCounted")).firstMatch
+            for _ in 0..<6 where !(fold.exists && fold.isHittable) { app.swipeUp() }
+            fold.tap()
             app.swipeUp()
             try self.expect(app, NSPredicate(format: "label CONTAINS %@", " listed"))
+            try self.expect(app, NSPredicate(format: "label CONTAINS %@", "Thresholds: a message may become a correction from 0.40"))
+            try self.expect(app, NSPredicate(format: "label BEGINSWITH %@", "How it counts: "))
         }
     }
     /// A turn with its violation. Show My Words in demo mode reads no words.
@@ -147,6 +155,20 @@ final class ScreenshotTests: XCTestCase {
     }
     func testLearningOlderPC() throws { try capture("learningOlderPC", waitFor: identifier("learningUpdatePC")) }
     func testLearningOlderPCList() throws { try capture("learningOlderPCList", waitFor: identifier("listUpdatePC")) }
+    /// Show My Words with words: one fixed synthetic sentence, wrapped, with its source line.
+    func testLearningWords() throws {
+        try capture("learningWords", waitFor: identifier("screen.learningTurn")) { app in
+            app.buttons["Show My Words"].firstMatch.tap()
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "words", "Synthetic demo correction for App Review."))
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "words", "Read from your transcript, redacted"))
+        }
+    }
+    func testLearningWordsLarge() throws {
+        try capture("learningWords-large", screen: "learningWords", waitFor: identifier("screen.learningTurn"), large: true) { app in
+            app.buttons["Show My Words"].firstMatch.tap()
+            try self.expect(app, NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "words", "Synthetic demo correction for App Review."))
+        }
+    }
     func testLearningWordsLimited() throws { try words("learningWordsLimited", line: "Enough words for now. Try again at") }
     func testLearningWordsRemoved() throws { try words("learningWordsRemoved", line: "Words removed with the transcript") }
     func testLearningWordsGone() throws { try words("learningWordsGone", line: "This row changed on your PC.") }
@@ -215,7 +237,11 @@ final class ScreenshotTests: XCTestCase {
         try capture("learning-large", screen: "learning", waitFor: identifier("screen.learning"), large: true)
     }
     func testLearningListLarge() throws {
-        try capture("learningList-large", screen: "learningList", waitFor: identifier("screen.learningList"), large: true)
+        try capture("learningList-large", screen: "learningList", waitFor: identifier("screen.learningList"), large: true) { app in
+            // The first row shows on the first screen at the large text size (review of the learning evidence build).
+            let reason = app.descendants(matching: .any).matching(self.identifier("rowReason")).firstMatch
+            XCTAssertTrue(reason.waitForExistence(timeout: 15) && reason.isHittable, "no row shows on the first screen")
+        }
     }
     func testLearningTurnLarge() throws {
         try capture("learningTurn-large", screen: "learningTurn", waitFor: identifier("screen.learningTurn"), large: true)

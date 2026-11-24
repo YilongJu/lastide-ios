@@ -2,8 +2,12 @@ import LastideKit
 import SwiftUI
 
 /// The learning screens of the screenshot runs (learning evidence design, check U1). The demo screens open the bundled
-/// demo lists. The paired screens show WORKSTATION-A with the same lists, and never connect. No screen shows words.
+/// demo lists. The paired screens show WORKSTATION-A with the same lists, and never connect. Only `learningWords` shows
+/// words: the one fixed synthetic sentence of the demo room, never a person's words.
 enum LearningStaging {
+    /// The words of the `learningWords` screen: the demo room's fixed synthetic sentence (`DEMO_WORDS` of demo-pc.mjs).
+    static let stagedWords = "Synthetic demo correction for App Review."
+
     /// The demo lists and the demo counts.
     static func demo() -> (DemoLearning, Counts) {
         do {
@@ -30,11 +34,12 @@ enum LearningStaging {
         switch screen {
         case .learningList, .learningOffline, .learningMismatch, .learningOlderPCList:
             return (.learning, [.learning(repeats)])
-        case .learningTurn, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer:
+        case .learningTurn, .learningWords, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer:
             return (.learning, [.learning(repeats), .learning(.turn(turn))])
         case .learningGroup:
-            guard let group = turn.group else { preconditionFailure("the demo turn joined no group") }
-            return (.learning, [.learning(repeats), .learning(.turn(turn)),
+            let member = turnInGroup(demo, week: thisWeek)
+            guard let group = member.group else { preconditionFailure("the demo turn joined no group") }
+            return (.learning, [.learning(repeats), .learning(.turn(member)),
                                 .learning(.list(.group(id: group.id), expected: group.size))])
         case .learningRule:
             let rule: LearningRule = first(.rulesOn) { row in
@@ -71,13 +76,23 @@ enum LearningStaging {
         }
     }
 
-    /// The newest turn of this week's repeat corrections that repeats an approved rule.
+    /// The newest turn of this week's repeat corrections that repeats an approved rule. A violation joins no group,
+    /// because a covered turn stays out of the pool (learning evidence design, section 3.1).
     static func turnWithViolation(_ demo: DemoLearning, week: String) -> LearningTurn {
         let rows = demo.lists[.repeatWeek(weekStart: week)]?.rows ?? []
         for row in rows {
-            if case .turn(let turn) = row, !turn.violations.isEmpty, turn.group != nil { return turn }
+            if case .turn(let turn) = row, !turn.violations.isEmpty { return turn }
         }
         preconditionFailure("this week's demo list holds no turn with a violation")
+    }
+
+    /// The newest turn of this week's repeat corrections that counts through its group.
+    static func turnInGroup(_ demo: DemoLearning, week: String) -> LearningTurn {
+        let rows = demo.lists[.repeatWeek(weekStart: week)]?.rows ?? []
+        for row in rows {
+            if case .turn(let turn) = row, turn.group != nil { return turn }
+        }
+        preconditionFailure("this week's demo list holds no turn of a group")
     }
 
     /// Stages a paired screen on the screenshot model. The clock stands 2 minutes after the counts were made.
@@ -99,9 +114,10 @@ enum LearningStaging {
         case .learningOffline:
             model.showForScreenshot(records: [try record(schema: 4)], store: try ScreenshotStaging.store(queue: true),
                                     pcOnline: false, learning: StagedLearning(online: false, words: nil))
-        case .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer:
+        case .learningWords, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone, .learningWordsNoAnswer:
             let words: LearningWordsPhase
             switch screen {
+            case .learningWords: words = .words(stagedWords)
             case .learningWordsLimited: words = .limited(nextAt: clock + 25 * 60_000)
             case .learningWordsRemoved: words = .removed
             case .learningWordsGone: words = .gone

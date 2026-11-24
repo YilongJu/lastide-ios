@@ -152,8 +152,10 @@ struct WeekChart: View {
         let states = counts.captionWeeks(chart)
         return counts.weeks.enumerated().map { index, week in
             let current = LearningDates.isCurrentWeek(week.weekStart, clock: clock) || (index == counts.weeks.count - 1 && !counts.hasRevisionFour)
+            // The axis shows the date only, so a narrow bar does not cut "Nov 16 so far" to "Nov 1...". The outline,
+            // the legend line and the spoken value say "so far".
             let label = LearningDates.label(week.weekStart)
-            return Bar(week: week, label: current ? LearningText.soFar(label) : label,
+            return Bar(week: week, label: label,
                        value: chart == .repeats ? week.repeatCorrections : week.violations, state: states[index].state,
                        current: current)
         }
@@ -174,6 +176,9 @@ struct WeekChart: View {
                     Text(LearningText.notMeasured).foregroundStyle(.secondary)
                 } else {
                     chartView(shown)
+                    if shown.contains(where: \.current) {
+                        Text(LearningText.currentWeekLegend).font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 DisclosureGroup(LearningText.weeks, isExpanded: $showWeeks) {
                     ForEach(bars.reversed()) { bar in
@@ -231,7 +236,7 @@ struct WeekChart: View {
         .frame(height: 180)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue(shown.map { "\($0.label): \($0.value)" }.joined(separator: ", "))
+        .accessibilityValue(shown.map { "\($0.current ? LearningText.soFar($0.label) : $0.label): \($0.value)" }.joined(separator: ", "))
         .accessibilityHint("Open the Weeks group below to see each week's list.")
         .accessibilityIdentifier("chart.\(chart == .repeats ? "repeats" : "violations")")
     }

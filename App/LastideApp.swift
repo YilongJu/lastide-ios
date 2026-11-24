@@ -26,8 +26,8 @@ enum ScreenshotScreen: String, CaseIterable, Sendable {
     case learningPaired, learningOffline, learningMismatch
     /// The same PC at revision 3: the numbers, and a list that asks to update Lastide on the PC.
     case learningOlderPC, learningOlderPCList
-    /// A turn's Show My Words on the online PC, in each state that shows no words.
-    case learningWordsLimited, learningWordsRemoved, learningWordsGone, learningWordsNoAnswer
+    /// A turn's Show My Words on the online PC: the words (one fixed synthetic sentence), and each state that shows none.
+    case learningWords, learningWordsLimited, learningWordsRemoved, learningWordsGone, learningWordsNoAnswer
     /// A Library rule's "Violations since approval", which opens the rule's list.
     case libraryViolations
 
@@ -117,7 +117,7 @@ extension ScreenshotStaging {
         case .libraryNotMeasured, .learningNotMeasured:
             model.showForScreenshot(records: [try record()], store: try store(queue: true, measured: false))
             model.fixClockForScreenshot(at: try DemoFixtures.load().counts.sentAt + 120_000)
-        case .learningPaired, .learningMismatch, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone,
+        case .learningPaired, .learningMismatch, .learningWords, .learningWordsLimited, .learningWordsRemoved, .learningWordsGone,
              .learningWordsNoAnswer, .learningOffline, .learningOlderPC, .learningOlderPCList:
             try LearningStaging.stage(screen, model: model)
         case .queue, .draftDetail, .library, .ruleDetail, .learning, .settings, .widgetSmall, .widgetRectangular,

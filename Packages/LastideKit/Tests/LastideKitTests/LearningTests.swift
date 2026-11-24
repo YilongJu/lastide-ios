@@ -397,6 +397,95 @@ final class LearningTests: XCTestCase {
         XCTAssertEqual(LearningText.definition(.violations, thresholds: nil, cap: 20).contains("at 0.70 or more"), true)
     }
 
+    // MARK: The review of the learning evidence build
+
+    /// A `counts` message of one store version whose this-week repeat corrections read `repeats`.
+    func counts(storeVersion: Int, repeats: Int) throws -> Counts {
+        let json = #"{"type":"counts","id":"\#(sampleID)","sentAt":\#(sampleTime),"schema":4,"storeVersion":\#(storeVersion),"repeatCorrectionsThisWeek":\#(repeats),"repeatCorrectionsLastWeek":1,"rulesApproved":1,"violationsThisWeek":0,"draftsToday":0,"draftCap":null,"draftingRunsToday":0,"draftingRunCap":20,"importRulesWaiting":0,"weeks":[{"weekStart":"2026-11-16","repeatCorrections":\#(repeats),"violations":0,"repeatState":"partial","violationState":"partial","waiting":0,"untraced":0}],"rulesApprovedThisWeek":0,"repeatCorrectionsLastWeekByNow":1,"violationsLastWeekByNow":0,"draftingRunsFinishedToday":0,"measuredFrom":null,"today":"2026-11-18"}"#
+        guard case .counts(let counts) = try decode(json) else { throw ValidationError(path: "", rule: "not counts") }
+        return counts
+    }
+
+    func testReviewMajor2TheSumCheckComparesOnlyCountsOfTheListsOwnStoreVersion() throws {
+        let subject = LearningSubject.repeatWeek(weekStart: "2026-11-16")
+        var (list, request) = LearningList.ask(subject, now: sampleTime)
+        _ = list.apply(try page(request, value: 3, rows: 3), now: sampleTime)
+        XCTAssertEqual(list.storeVersion, 44)
+        // Another list's first page brought counts of store version 45, which counts a fourth repeat.
+        let newer = try counts(storeVersion: 45, repeats: 4)
+        XCTAssertNil(list.mismatch(counts: newer), "a list is never compared with the numbers of another store version")
+        XCTAssertTrue(list.isStale(against: newer), "the list reads again instead")
+        let again = list.readAgain(now: sampleTime)
+        XCTAssertEqual([again.from, list.phase == .asking ? 1 : 0, list.restarted ? 1 : 0], [0, 1, 1])
+        XCTAssertEqual(LearningText.changed, "The list changed on your PC, so it reads again.")
+        // The same store version that disagrees with its own list still shows the line.
+        var (same, sameRequest) = LearningList.ask(subject, now: sampleTime)
+        _ = same.apply(try page(sameRequest, value: 3, rows: 3), now: sampleTime)
+        let difference = try XCTUnwrap(same.mismatch(counts: try counts(storeVersion: 44, repeats: 4)))
+        XCTAssertEqual([difference.counted, difference.listed], [4, 3])
+        XCTAssertFalse(same.isStale(against: try counts(storeVersion: 45, repeats: 3)), "a newer version with the same number keeps the list")
+        sameRequest = same.askAgain(now: sampleTime)
+        XCTAssertEqual(sameRequest.from, 0)
+    }
+
+    func testReviewMinor3ALimitedLaterPageKeepsTheRowsAlreadyShown() throws {
+        let subject = LearningSubject.rulesOn
+        var (list, first) = LearningList.ask(subject, now: sampleTime)
+        _ = list.apply(try page(first, value: 120, rows: 50, next: 50), now: sampleTime)
+        let second = try XCTUnwrap(list.nextRequest(now: sampleTime))
+        XCTAssertEqual(list.apply(try page(second, state: .limited), now: sampleTime), .shown)
+        XCTAssertEqual([list.rows.count, list.next ?? -1], [50, 50])
+        XCTAssertEqual(list.phase, .shown)
+        XCTAssertTrue(list.laterPageLimited)
+        let retry = try XCTUnwrap(list.nextRequest(now: sampleTime), "Show More asks again")
+        XCTAssertEqual(retry.from, 50)
+        XCTAssertEqual(list.apply(try page(retry, value: 120, rows: 50, next: 100), now: sampleTime), .shown)
+        XCTAssertEqual(list.rows.count, 100)
+        XCTAssertFalse(list.laterPageLimited)
+    }
+
+    func testReviewMajor1ATurnWithMoreViolationsThanARowHoldsDecodesTheCountLeftOut() throws {
+        guard case .learningPage(var template) = try SyncMessage.decode(Data(try plaintext("learningPage").utf8)),
+              case .turn(var turn)? = template.rows.first else { return XCTFail("the vector's page holds no turn") }
+        XCTAssertNil(turn.violationsLeftOut, "a row without the field decodes as before")
+        turn.violations = Array(repeating: turn.violations[0], count: 8)
+        turn.violationsLeftOut = 3
+        template.rows = [.turn(turn)]
+        let message = SyncMessage.learningPage(template)
+        guard case .learningPage(let decoded) = try SyncMessage.decode(message.encoded()),
+              case .turn(let back)? = decoded.rows.first else { return XCTFail("the page did not decode") }
+        XCTAssertEqual(back.violationsLeftOut, 3)
+        XCTAssertEqual(LearningText.violationsLeftOut(3), "3 more violations are not on this phone. Your PC shows them.")
+        XCTAssertTrue(try XCTUnwrap(LearningText.turnReason(back, dateText: String.init)).hasSuffix(", and 10 more rules"))
+    }
+
+    func testReviewMajorsTheTextsSayWhatTheCodeCountsAndWhyARowCounts() throws {
+        guard case .learningPage(let template) = try SyncMessage.decode(Data(try plaintext("learningPage").utf8)),
+              case .turn(var turn)? = template.rows.first else { return XCTFail("the vector's page holds no turn") }
+        let definition = LearningText.definition(.violations, thresholds: nil, cap: 20)
+        XCTAssertTrue(definition.contains("covers the message at 0.70 or more"), definition)
+        XCTAssertTrue(definition.contains("Its first answer was that the message repeats the rule, ahead of \"contradicts\" and \"unrelated\"."), definition)
+        XCTAssertEqual(LearningText.listRule(.violationWeek(weekStart: "2026-11-16"), thresholds: nil),
+                       "How it counts: a rule covers the message at 0.70 or more, and the first of the three answers is \"repeats\". You typed the message after the rule's approval.")
+        let subjects: [LearningSubject] = [.repeatWeek(weekStart: "2026-11-16"), .violationWeek(weekStart: "2026-11-16"),
+                                           .rulesApprovedWeek(weekStart: "2026-11-16"), .draftsToday(day: "2026-11-18"),
+                                           .runsToday(day: "2026-11-18"), .rulesOn, .group(id: "g-0123456789ab"), .rule(id: "r-1"),
+                                           .draft(id: "d-1"), .run(id: "run-1")]
+        XCTAssertTrue(subjects.allSatisfy { LearningText.listRule($0, thresholds: nil).hasPrefix("How it counts: ") })
+        XCTAssertEqual(subjects.map { LearningText.thresholds($0, template.thresholds) == nil },
+                       [false, false, true, true, true, true, false, false, false, true])
+        XCTAssertEqual(LearningText.thresholds(.rule(id: "r-1"), template.thresholds), "Threshold: a rule covers a message from 0.70.")
+        // A violation that is not a correction: its kind score shows without a threshold.
+        turn.group = nil
+        turn.kindScore = 0.3
+        XCTAssertEqual(LearningText.kindScoreLine(turn, threshold: 0.4), "The model's score: 0.30. Not used: a violation counts through the rule it repeats.")
+        XCTAssertEqual(try XCTUnwrap(LearningText.turnReason(turn, dateText: String.init)), "Repeats: \(turn.violations[0].ruleText)")
+        XCTAssertEqual(LearningText.repeatsAnswer(0.45), "0.45, the highest of the three answers: repeats, contradicts, unrelated.")
+        turn.violations = []
+        XCTAssertNil(LearningText.turnReason(turn, dateText: String.init))
+        XCTAssertEqual(LearningText.kindScoreLine(turn, threshold: 0.4), "The model's score: 0.30. A message counts from 0.40.")
+    }
+
     // MARK: The demo lists
 
     func testTheDemoListsEqualTheDemoNumbers() throws {
@@ -429,6 +518,8 @@ final class LearningTests: XCTestCase {
             for row in list.rows {
                 switch row {
                 case .turn(let turn):
+                    // A covered turn stays out of the pool (design section 3.1), so a violation is never a group member.
+                    XCTAssertFalse(turn.group != nil && !turn.violations.isEmpty, "\(turn.ref) is both a group member and a violation")
                     if let group = turn.group { XCTAssertNotNil(demo.lists[.group(id: group.id)], group.id) }
                     for violation in turn.violations { XCTAssertNotNil(demo.lists[.rule(id: violation.ruleId)], violation.ruleId) }
                 case .rule(let rule):
@@ -446,6 +537,7 @@ final class LearningTests: XCTestCase {
         let long = try XCTUnwrap(demo.lists.values.first { $0.total > 0 })
         let first = demo.page(LearningRequest(id: makeMessageID(), sentAt: 0, subject: long.subject, from: 0, listHash: nil))
         XCTAssertEqual(first.state, .ok)
+        XCTAssertEqual(first.storeVersion, counts.storeVersion, "a demo page and the demo numbers share one store version, so the sum check runs")
         XCTAssertEqual(first.rows.count, min(50, long.total))
         let changed = demo.page(LearningRequest(id: makeMessageID(), sentAt: 0, subject: long.subject, from: 1,
                                                 listHash: "AAAAAAAAAAAAAAAAAAAAAA"))

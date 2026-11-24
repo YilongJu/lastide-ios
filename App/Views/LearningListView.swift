@@ -55,8 +55,9 @@ struct LearningScreen: View {
     }
 }
 
-/// A list: its number, definition, rule, thresholds and what it leaves out, then its rows, 50 at a time
-/// (learning evidence design, section 7).
+/// A list: its number and what it leaves out, then its rows, 50 at a time, then a folded group with the definition,
+/// the counting rule and the thresholds (learning evidence design, section 7). The rows come before the explanation,
+/// so the first row shows on the first screen at a large text size too.
 struct LearningListView: View {
     @Bindable var model: AppModel
     let subject: LearningSubject
@@ -71,21 +72,15 @@ struct LearningListView: View {
         List {
             Section {
                 Text(LearningText.listTitle(subject)).font(.headline)
-                if let list, list.phase == .shown {
-                    Text(LearningText.value(list.value)).monospacedDigit().accessibilityIdentifier("listValue")
-                    if let asOf = list.asOf { Text(LearningText.countedAt(LearningDates.time(asOf))).font(.footnote).foregroundStyle(.secondary) }
-                } else if let number {
-                    Text(LearningText.value(number)).monospacedDigit().accessibilityIdentifier("listValue")
+                // The number the person tapped. On a difference, the line below names the count the list holds.
+                if let shown = number ?? (list?.phase == .shown ? list?.value : nil) {
+                    Text(LearningText.value(shown)).monospacedDigit().accessibilityIdentifier("listValue")
                 }
-                Text(LearningText.listDefinition(subject, thresholds: list?.thresholds ?? model.learningThresholds,
-                                                 cap: counts?.draftingRunCap))
-                Text(LearningText.listRule(subject, thresholds: list?.thresholds ?? model.learningThresholds))
-                    .font(.footnote).foregroundStyle(.secondary)
-                if let thresholds = list?.thresholds ?? model.learningThresholds {
-                    Text(LearningText.thresholds(thresholds)).font(.footnote).foregroundStyle(.secondary)
+                if let list, list.phase == .shown, let asOf = list.asOf {
+                    Text(LearningText.countedAt(LearningDates.time(asOf))).font(.footnote).foregroundStyle(.secondary)
                 }
                 if let list, list.phase == .shown { leftOutLines(list) }
-                if let difference = list?.mismatch(expected: number) {
+                if let difference = list?.mismatch(counts: counts) {
                     Label(LearningText.mismatch(counted: difference.counted, listed: difference.listed),
                           systemImage: "exclamationmark.triangle")
                         .foregroundStyle(Color.statusText)
@@ -102,12 +97,32 @@ struct LearningListView: View {
                 Section("Details") { HeadSummary(head: head) }
             }
             rowsSection
+            Section {
+                if list?.phase == .shown {
+                    DisclosureGroup(LearningText.howCounted) { explanation }.accessibilityIdentifier("howCounted")
+                } else {
+                    // No row shows, so the definition and the rule stay open.
+                    explanation
+                }
+            }
         }
         .navigationTitle(LearningText.listScreenTitle(subject))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { model.openList(subject) }
         .onChange(of: model.screenGeneration) { _, _ in model.openList(subject) }
         .accessibilityIdentifier("screen.learningList")
+    }
+
+    /// The list's definition, its counting rule and the thresholds that judged its rows.
+    @ViewBuilder
+    private var explanation: some View {
+        Text(LearningText.listDefinition(subject, thresholds: list?.thresholds ?? model.learningThresholds,
+                                         cap: counts?.draftingRunCap))
+        Text(LearningText.listRule(subject, thresholds: list?.thresholds ?? model.learningThresholds))
+            .font(.footnote).foregroundStyle(.secondary)
+        if let thresholds = list?.thresholds ?? model.learningThresholds, let line = LearningText.thresholds(subject, thresholds) {
+            Text(line).font(.footnote).foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -132,6 +147,10 @@ struct LearningListView: View {
                         NavigationLink(value: AppRoute.learning(route(row))) { LearningRowView(row: row) }
                     }
                     if list.next != nil {
+                        if list.laterPageLimited {
+                            Text(LearningText.laterPageLimited).font(.footnote).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("showMoreLimited")
+                        }
                         Button(LearningText.showMore) { model.showMore(subject) }.accessibilityIdentifier("showMore")
                     }
                 }
@@ -188,13 +207,15 @@ struct LearningRowView: View {
             switch row {
             case .turn(let turn):
                 Text(LearningDates.time(turn.at) + " · " + turn.projectName)
-                Text(LearningText.agent(turn) + " · " + (turn.signal.map(Words.signal) ?? LearningText.notKept))
+                Text(([LearningText.agent(turn), turn.signal.map(Words.signal) ?? LearningText.notKept]
+                      + (turn.category.map { [LearningText.category($0)] } ?? [])).joined(separator: " · "))
                     .font(.footnote).foregroundStyle(.secondary)
-                if !turn.counted {
+                // Why the row counts: the rule it repeats, or when its group was first said.
+                if let reason = LearningText.turnReason(turn, dateText: LearningDates.time) {
+                    Text(reason).font(.footnote).foregroundStyle(turn.violations.isEmpty ? Color.secondary : Color.statusText)
+                        .accessibilityIdentifier("rowReason")
+                } else if !turn.counted {
                     Text(LearningText.counted(turn)).font(.footnote).foregroundStyle(.secondary)
-                }
-                if !turn.violations.isEmpty {
-                    Text(LearningText.violationCount(turn.violations.count)).font(.footnote).foregroundStyle(Color.statusText)
                 }
             case .rule(let rule):
                 Text(rule.text).foregroundStyle(rule.state == .on ? .primary : .secondary)

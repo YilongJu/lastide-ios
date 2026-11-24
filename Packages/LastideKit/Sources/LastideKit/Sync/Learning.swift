@@ -255,11 +255,14 @@ public struct LearningTurn: Hashable, Sendable, Codable, Validatable {
     public var counted: Bool
     public var countedAt: Int?
     public var group: LearningGroupRef?
+    /// The 8 violations answered last, newest first, when the turn repeats more rules than a row holds.
     public var violations: [LearningViolation]
+    /// The violations the PC left out of `violations`, absent when it left none out.
+    public var violationsLeftOut: Int?
 
     enum CodingKeys: String, CodingKey {
         case rowType, ref, at, projectName, agent, commentLabel, signal, category, kindScore, scopeScore, questionVersion
-        case counted, countedAt, group, violations
+        case counted, countedAt, group, violations, violationsLeftOut
     }
 
     public init(from decoder: Decoder) throws {
@@ -281,6 +284,7 @@ public struct LearningTurn: Hashable, Sendable, Codable, Validatable {
         countedAt = try c.nullable(Int.self, forKey: .countedAt)
         group = try c.nullable(LearningGroupRef.self, forKey: .group)
         violations = try c.decode([LearningViolation].self, forKey: .violations)
+        violationsLeftOut = try c.decodeIfPresent(Int.self, forKey: .violationsLeftOut)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -300,6 +304,7 @@ public struct LearningTurn: Hashable, Sendable, Codable, Validatable {
         try c.encodeNullable(countedAt, forKey: .countedAt)
         try c.encodeNullable(group, forKey: .group)
         try c.encode(violations, forKey: .violations)
+        try c.encodeIfPresent(violationsLeftOut, forKey: .violationsLeftOut)
     }
 
     func validate(_ path: String) throws {
@@ -314,6 +319,7 @@ public struct LearningTurn: Hashable, Sendable, Codable, Validatable {
         try group?.validate(path + ".group")
         try Check.count(violations, path + ".violations", minimum: 0, maximum: 8)
         for (i, violation) in violations.enumerated() { try violation.validate(path + ".violations[\(i)]") }
+        try Check.optionalInteger(violationsLeftOut, path + ".violationsLeftOut")
         if agent == nil {
             try Check.that(commentLabel != nil, path + ".commentLabel", "present when agent is null")
             try Check.that(signal == nil || signal == .reviewComment, path + ".signal", "reviewComment or null when agent is null")

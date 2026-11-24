@@ -103,7 +103,7 @@ Terms:
 | `learningTurn` | `rowType` is `turn`; `ref`, `at`, `projectName` and `counted` are present | `LearningTurn` decoding, `LearningTurn.validate` |
 | `learningTurn` | `agent` is `claudeCode`, `codex` or null; `commentLabel`, when present, is null or matches `^C[0-9]{1,9}$` | `LearningTurn` decoding, `LearningTurn.validate` |
 | `learningTurn` | Nullable `signal`, `category`, `kindScore`, `scopeScore`, `questionVersion`, `countedAt` and `group` | `LearningTurn` decoding, `LearningTurn.validate` |
-| `learningTurn` | At most 8 `violations` | `LearningTurn` decoding, `LearningTurn.validate` |
+| `learningTurn` | At most 8 `violations`; `violationsLeftOut`, when present, is an integer from 0 to 2^53 - 1 | `LearningTurn` decoding, `LearningTurn.validate` |
 | `learningTurn`, `agent` null | A review comment: `commentLabel` is present, and `signal` is `reviewComment` or null | `LearningTurn.validate` |
 | `learningRule` | `rowType` is `rule`; `text` is a `learningText`; `state` is `on`, `off` or `deleted` | `LearningRule` decoding, `LearningRule.validate` |
 | `learningRule` | `source`, `category`, `scope`, `approvedAt` and `correctionsBeforeApproval`; nullable `violations`, `draftId` and `runId` | `LearningRule` decoding, `LearningRule.validate` |

@@ -620,6 +620,14 @@ static func listDefinition(_ subject: LearningSubject, thresholds: LearningThres
 static func listRule(_ subject: LearningSubject, thresholds: LearningThresholds?) -> String
 static func mismatch(counted: Int, listed: Int) -> String     // "Your PC counted 7 and listed 6."
 static func kindScore(_ value: Double, threshold: Double) -> String
+static func kindScoreLine(_ turn: LearningTurn, threshold: Double) -> String   // without the threshold for a violation that is no correction
+static func repeatsAnswer(_ value: Double) -> String         // "0.88, the highest of the three answers: repeats, contradicts, unrelated."
+static func thresholds(_ subject: LearningSubject, _ thresholds: LearningThresholds) -> String?   // nil for drafts, runs and rules
+static func turnReason(_ turn: LearningTurn, dateText: (Int) -> String) -> String?   // "Repeats: {rule}" or "Said again: first said {date}"
+static func violationsLeftOut(_ count: Int) -> String        // "1 more violation is not on this phone. Your PC shows it."
+static let howCounted: String                                // "How this is counted", the folded group below a list's rows
+static let laterPageLimited: String                          // the line beside Show More after a refused later page
+static let currentWeekLegend: String                         // "The outlined bar is this week so far."
 ```
 
 `caption` compares complete, measured weeks only, and gives the desktop's `chartCaption` text for the same weeks. `Counts.caption(_:)`, `Counts.captionWeeks(_:)` and `Counts.number(for:)` read the counts a screen shows.
@@ -635,10 +643,14 @@ mutating func nextRequest(now: Int) -> LearningRequest?
 mutating func askAgain(now: Int) -> LearningRequest
 mutating func apply(_ page: LearningPage, now: Int) -> LearningListStep
 mutating func checkTimeout(now: Int) -> Bool
+mutating func readAgain(now: Int) -> LearningRequest
+func mismatch(counts: Counts?) -> (counted: Int, listed: Int)?
 func mismatch(expected: Int?) -> (counted: Int, listed: Int)?
+func isStale(against counts: Counts?) -> Bool
+var laterPageLimited: Bool { get }
 ```
 
-`apply` ignores a page that answers another request. A page of state `changed`, or a later page with another list hash, asks for the first page again, at most `restartLimit` (3) times. `mismatch` is the phone's sum check of design Table 10. `LearningWordsPhase` names what Show My Words shows.
+`apply` ignores a page that answers another request. A page of state `changed`, or a later page with another list hash, asks for the first page again, at most `restartLimit` (3) times. A `limited` later page keeps the rows read and sets `laterPageLimited`. `mismatch(counts:)` is the phone's sum check of design Table 10. The check compares the first page with `counts` of the list's own `storeVersion` only. `mismatch(expected:)` takes a number of that same store version. `isStale(against:)` is true when a newer `counts` gives the list's number another value. `readAgain` then asks for the first page. `LearningWordsPhase` names what Show My Words shows.
 
 ### `struct DemoLearning`
 
