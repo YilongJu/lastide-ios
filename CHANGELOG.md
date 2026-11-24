@@ -4,6 +4,8 @@ What changed in each TestFlight build of Lastide for iPhone, newest first. The a
 
 ## Unreleased
 
+## Build 9 (2026-11-24)
+
 - Settings has a What's New row. It lists the changes of every build, newest first, and marks the build on your phone.
 - After an update, the app shows what is new in that build once.
 
