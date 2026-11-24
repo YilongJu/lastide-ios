@@ -719,3 +719,29 @@ Every throw is a `PushFailure`: `payload`, `header`, `unknownPairing`, `noKey`, 
 ### `struct FramesRequest` and `enum FramesAnswer`
 
 `FramesRequest(record:token:envelope:)` builds the URL, the `Lastide-Device` value and the body of `POST /frames`. `FramesAnswer(status:body:)` reads the answer as `stored(seq:)`, `roomGone`, `notAttested` or `refused(String)`.
+
+## The changelog
+
+`CHANGELOG.md` at the repository root is the one copy. The app bundles it, and `scripts/ci/changelog.py` reads the same format in CI.
+
+### `struct Changelog: Hashable, Sendable`
+
+```swift
+static func parse(_ text: String) throws -> Changelog   // throws ChangelogError on the first line that breaks the format
+let unreleased: [String]                                 // the next TestFlight build's entries
+let builds: [Changelog.Build]                            // newest first: build, date "YYYY-MM-DD", items
+var latestBuild: Int?
+func entries(installedBuild: Int) -> [ChangelogEntry]    // the What's New sections, the installed build marked
+func installedEntry(installedBuild: Int) -> ChangelogEntry?
+func whatsNew(installedBuild: Int, lastSeenBuild: Int?) -> ChangelogEntry?  // the entry to show once after an update
+```
+
+`entries` lists the Unreleased entries as the installed build's own when the installed build is newer than every listed build. A TestFlight build carries the file from before the workflow stamps it, so its entries read "Build N" there. A development build numbered 1 shows them as "Unreleased".
+
+### `struct ChangelogEntry: Hashable, Sendable, Identifiable`
+
+`build` (nil for Unreleased), `date`, `items`, `isInstalled`, and `title`: "Build 9" or "Unreleased".
+
+### `struct ChangelogError: Error`
+
+`line` (1-based) and `reason`. Its `description` reads "Line 7: ...".
